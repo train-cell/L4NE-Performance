@@ -49,9 +49,20 @@ def generate_pbxproj():
     proj_config_release_id = make_id("proj_config_release")
     proj_config_list_id = make_id("proj_config_list")
     sources_build_phase_id = make_id("sources_build_phase")
+    resources_build_phase_id = make_id("resources_build_phase")
+    xcassets_fileref_id = make_id("fileref_xcassets")
+    xcassets_buildfile_id = make_id("buildfile_xcassets")
     main_group_id = make_id("main_group")
     proj_id = make_id("project_root")
     product_id = make_id("product_app")
+
+    file_refs.append(
+        f'\t\t{xcassets_fileref_id} /* Assets.xcassets */ = {{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Sources/L4NETrainingApp/Assets.xcassets"; sourceTree = "<group>"; }};'
+    )
+    build_files.append(
+        f'\t\t{xcassets_buildfile_id} /* Assets.xcassets in Resources */ = {{isa = PBXBuildFile; fileRef = {xcassets_fileref_id} /* Assets.xcassets */; }};'
+    )
+    children_ids.append(f"\t\t\t\t{xcassets_fileref_id} /* Assets.xcassets */,")
 
     sources_phase_entries = "\n".join(
         [
@@ -94,6 +105,7 @@ def generate_pbxproj():
 			buildConfigurationList = {config_list_id} /* Build configuration list for PBXNativeTarget "L4NETraining" */;
 			buildPhases = (
 				{sources_build_phase_id} /* Sources */,
+				{resources_build_phase_id} /* Resources */,
 			);
 			buildRules = (
 			);
@@ -143,6 +155,17 @@ def generate_pbxproj():
 		}};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXResourcesBuildPhase section */
+		{resources_build_phase_id} /* Resources */ = {{
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				{xcassets_buildfile_id} /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		}};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin XCBuildConfiguration section */
 		{proj_config_debug_id} /* Debug */ = {{
 			isa = XCBuildConfiguration;
@@ -169,6 +192,7 @@ def generate_pbxproj():
 		{config_debug_id} /* Debug */ = {{
 			isa = XCBuildConfiguration;
 			buildSettings = {{
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "L4NE Performance";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Performance διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ανάλυση απόδοσης.";
@@ -195,6 +219,7 @@ def generate_pbxproj():
 		{config_release_id} /* Release */ = {{
 			isa = XCBuildConfiguration;
 			buildSettings = {{
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "L4NE Performance";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Performance διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ανάλυση απόδοσης.";

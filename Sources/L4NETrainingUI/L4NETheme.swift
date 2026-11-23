@@ -698,27 +698,36 @@ public struct L4NEStartingBlockIcon: View {
 
             // 8. Horizontal Bottom Base Plate
             var basePlate = Path()
-            basePlate.move(to: p(17, 90))
-            basePlate.addLine(to: p(66, 90))
+            basePlate.move(to: p(17, 88))
+            basePlate.addLine(to: p(66, 88))
             context.stroke(
                 basePlate,
                 with: .color(blockColor),
-                style: StrokeStyle(lineWidth: w * 0.040, lineCap: .round)
+                style: StrokeStyle(lineWidth: w * 0.042, lineCap: .round)
             )
 
-            // 9. High-Contrast Carved Cutout Digit '4' inside the Starting Block Pedestal (always visible across all themes!)
-            var fourPath = Path()
-            // Vertical & diagonal stroke of '4'
-            fourPath.move(to: p(52, 53))
-            fourPath.addLine(to: p(39, 69))
-            fourPath.addLine(to: p(57, 69))
-            fourPath.move(to: p(52, 53))
-            fourPath.addLine(to: p(52, 77))
-            context.stroke(
-                fourPath,
-                with: .color(cutoutColor),
-                style: StrokeStyle(lineWidth: w * 0.068, lineCap: .round, lineJoin: .round)
-            )
+            // 9. Official L4NE Closed-Triangle Digit '4' Cutout inside the Starting Block Pedestal (Pure White inside Blue Block)
+            var fourOuter = Path()
+            fourOuter.move(to: p(48, 50))
+            fourOuter.addLine(to: p(34, 70))
+            fourOuter.addLine(to: p(48, 70))
+            fourOuter.addLine(to: p(48, 78))
+            fourOuter.addLine(to: p(55, 78))
+            fourOuter.addLine(to: p(55, 70))
+            fourOuter.addLine(to: p(60, 70))
+            fourOuter.addLine(to: p(60, 64))
+            fourOuter.addLine(to: p(55, 64))
+            fourOuter.addLine(to: p(55, 50))
+            fourOuter.closeSubpath()
+            context.fill(fourOuter, with: .color(cutoutColor))
+
+            // Inner triangle of the '4' filled back with blockColor so the '4' looks identical to l4ne.gr
+            var fourInner = Path()
+            fourInner.move(to: p(48, 56))
+            fourInner.addLine(to: p(40, 64))
+            fourInner.addLine(to: p(48, 64))
+            fourInner.closeSubpath()
+            context.fill(fourInner, with: .color(blockColor))
         }
         .frame(width: size, height: size)
     }

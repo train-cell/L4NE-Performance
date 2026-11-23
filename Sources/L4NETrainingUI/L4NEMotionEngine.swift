@@ -451,6 +451,8 @@ public struct L4NEAnimatedStartingBlockBadge: View {
     @State private var isBouncing: Bool = false
     @State private var manualPlunge: Bool = false
 
+    private let l4neIconBlue = Color(hex: "1D4ED8")
+
     public init(palette: L4NEPalette, isMaximized: Bool) {
         self.palette = palette
         self.isMaximized = isMaximized
@@ -458,52 +460,38 @@ public struct L4NEAnimatedStartingBlockBadge: View {
 
     public var body: some View {
         ZStack {
+            // Pure White outer icon square ("το εικονίδιο γύρω γύρω να είναι άσπρο")
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(palette.surface1)
-                .frame(width: 46, height: 46)
-                .overlay(
-                    // Mini water wave at base of block
-                    VStack {
-                        Spacer()
-                        Rectangle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [palette.secondaryAccent.opacity(0.28), palette.primaryAccent.opacity(0.18)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(height: isMaximized ? (isBouncing ? 15 : 10) : 0)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                )
+                .fill(Color.white)
+                .frame(width: 50, height: 50)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [palette.primaryAccent, palette.secondaryAccent],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: isMaximized ? 1.8 : 1.2
-                        )
+                        .stroke(l4neIconBlue.opacity(0.30), lineWidth: 1.4)
                 )
                 .shadow(
-                    color: isMaximized ? palette.primaryAccent.opacity(0.32) : Color.clear,
-                    radius: 6,
+                    color: isMaximized ? palette.primaryAccent.opacity(0.28) : Color.black.opacity(0.18),
+                    radius: 5,
                     x: 0,
                     y: 2
                 )
 
-            // Always use palette.surface1 as cutoutColor so the carved '4' contrasts 100% against blockColor (palette.textPrimary)!
-            L4NEStartingBlockIcon(
-                blockColor: palette.textPrimary,
-                cutoutColor: palette.surface1,
-                size: 35
-            )
-            .scaleEffect(x: 1.0, y: manualPlunge ? 0.86 : (isMaximized && isBouncing ? 0.94 : 1.0), anchor: .bottom)
-            .rotationEffect(.degrees(manualPlunge ? 7.0 : (isMaximized && isBouncing ? 3.5 : -2.0)))
-            .offset(y: manualPlunge ? 6.0 : (isMaximized && isBouncing ? 2.8 : -1.8))
+            // Blue Starting Block with White '4' inside + "L4NE" underneath
+            VStack(spacing: -2) {
+                L4NEStartingBlockIcon(
+                    blockColor: l4neIconBlue,
+                    cutoutColor: Color.white,
+                    size: 33
+                )
+                .scaleEffect(x: 1.0, y: manualPlunge ? 0.86 : (isMaximized && isBouncing ? 0.94 : 1.0), anchor: .bottom)
+                .rotationEffect(.degrees(manualPlunge ? 7.0 : (isMaximized && isBouncing ? 3.2 : -1.5)))
+                .offset(y: manualPlunge ? 4.0 : (isMaximized && isBouncing ? 1.8 : -1.0))
+
+                Text("L4NE")
+                    .font(.system(size: 9.5, weight: .black, design: .rounded))
+                    .tracking(0.8)
+                    .foregroundStyle(l4neIconBlue)
+                    .lineLimit(1)
+            }
         }
         .onAppear {
             guard isMaximized else { return }

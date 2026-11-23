@@ -4,20 +4,23 @@
       <rect x="0" y="0" width="400" height="420" fill="white" />
       <!-- Cutout for the backstroke grip bar channel inside the pedestal -->
       <path d="M 172 136 L 295 157 A 10 10 0 0 1 292 177 L 169 156 A 10 10 0 0 1 172 136 Z" fill="black" />
-      <!-- Cutout for the iconic '4' inside the starting block pedestal -->
+      <!-- Cutout for the iconic '4' inside the starting block pedestal (renders pure White on the White card) -->
       <path d="M 205 218 L 170 218 L 170 205 L 198 162 L 214 162 L 188 204 L 205 204 L 205 186 L 220 186 L 220 204 L 229 204 L 229 218 L 220 218 L 220 233 L 205 233 Z" fill="black" />
     </mask>
   </defs>
 
-  <!-- Official L4NE Starting Block #4 (Βατήρας Εκκίνησης) -->
-  <g fill="#F1F5F9">
+  <!-- Pure White Rounded Square Icon Background ("το εικονίδιο γύρω γύρω να είναι άσπρο") -->
+  <rect x="4" y="4" width="392" height="412" rx="84" fill="#FFFFFF" stroke="#1D4ED8" stroke-width="6" />
+
+  <!-- Official L4NE Blue Starting Block #4 ("μπλε βατήρας, το 4 μέσα άσπρο, από κάτω L4NE") -->
+  <g fill="#1D4ED8">
     <!-- 1. Top-left Track-Start Rear Wedge Fin -->
     <path d="M 126 38 C 127 35 131 35 133 37 L 174 74 L 138 68 L 126 38 Z" />
 
     <!-- 2. Slanted Top Diving Platform Deck -->
     <rect x="112" y="74" width="212" height="11" rx="5.5" transform="rotate(9.8 112 74)" />
 
-    <!-- 3. Main Slanted Pedestal Body (with '4' & rail channel masked out) -->
+    <!-- 3. Main Slanted Pedestal Body (with White '4' & rail channel masked out) -->
     <path mask="url(#pedestal-cutout)" d="
       M 102 88
       L 254 114
@@ -38,7 +41,7 @@
     <path d="M 282 170 L 290 172 L 244 252 L 236 252 Z" />
 
     <!-- 6. Curved Backstroke Starting Grip Rail -->
-    <path d="M 173 142 L 304 165 C 318 168 325 177 325 191 L 325 230" fill="none" stroke="#F1F5F9" stroke-width="8" stroke-linecap="round" />
+    <path d="M 173 142 L 304 165 C 318 168 325 177 325 191 L 325 230" fill="none" stroke="#1D4ED8" stroke-width="8" stroke-linecap="round" />
 
     <!-- 7. Lower-Left Step Bar & Support Wedge -->
     <rect x="92" y="196" width="54" height="10" rx="3" />
@@ -47,7 +50,7 @@
     <!-- 8. Horizontal Bottom Base Plate -->
     <rect x="116" y="259" width="132" height="9" rx="4.5" />
 
-    <!-- 9. Official Bold Geometric L4NE Wordmark -->
+    <!-- 9. Official Bold Geometric L4NE Wordmark Underneath -->
     <g transform="translate(0, 12)">
       <!-- L -->
       <path d="M 52 296 L 73 296 L 73 364 L 118 364 L 118 383 L 52 383 Z" />

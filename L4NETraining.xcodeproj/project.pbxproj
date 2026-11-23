@@ -16,6 +16,7 @@
 		A384123E7D685D86B58C894A /* L4NEScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4514AD3C7AA53978621B625 /* L4NEScreens.swift */; };
 		B6FD8E4DF63A562E96D809D8 /* L4NETheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6954C94ED11355C98765787D /* L4NETheme.swift */; };
 		27AB10FD106C5DD89A8FF51B /* L4NETrainingApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61CFEACD76635421B1D0AD7B /* L4NETrainingApp.swift */; };
+		DA8DFD57097B5B38AB598DC6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 71C6DDC4D18950DBAB894B78 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 		A4514AD3C7AA53978621B625 /* L4NEScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingUI/L4NEScreens.swift"; sourceTree = "<group>"; };
 		6954C94ED11355C98765787D /* L4NETheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingUI/L4NETheme.swift"; sourceTree = "<group>"; };
 		61CFEACD76635421B1D0AD7B /* L4NETrainingApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingApp/L4NETrainingApp.swift"; sourceTree = "<group>"; };
+		71C6DDC4D18950DBAB894B78 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Sources/L4NETrainingApp/Assets.xcassets"; sourceTree = "<group>"; };
 		C2DBF4EF9D605889B54F6416 /* L4NETraining.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = L4NETraining.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -44,6 +46,7 @@
 				A4514AD3C7AA53978621B625 /* L4NEScreens.swift */,
 				6954C94ED11355C98765787D /* L4NETheme.swift */,
 				61CFEACD76635421B1D0AD7B /* L4NETrainingApp.swift */,
+				71C6DDC4D18950DBAB894B78 /* Assets.xcassets */,
 				C2DBF4EF9D605889B54F6416 /* L4NETraining.app */,
 			);
 			sourceTree = "<group>";
@@ -56,6 +59,7 @@
 			buildConfigurationList = CF9661A3E1E05BE099E28915 /* Build configuration list for PBXNativeTarget "L4NETraining" */;
 			buildPhases = (
 				376F7C5FC3DA5F6199208A27 /* Sources */,
+				701533E0876C5C8FB44BF50D /* Resources */,
 			);
 			buildRules = (
 			);
@@ -113,6 +117,17 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXResourcesBuildPhase section */
+		701533E0876C5C8FB44BF50D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DA8DFD57097B5B38AB598DC6 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin XCBuildConfiguration section */
 		0B7CA7FA903953149FFD82D4 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -139,6 +154,7 @@
 		00150996435A532086E0BD82 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "L4NE Performance";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Performance διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ανάλυση απόδοσης.";
@@ -165,6 +181,7 @@
 		E4DED378B15A533F9E9A663C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "L4NE Performance";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Performance διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ανάλυση απόδοσης.";
