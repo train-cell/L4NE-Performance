@@ -1,100 +1,57 @@
-# L4NE Performance — L4NE Training
+# L4NE Performance — L4NE Training (v1.2.0)
 
 > **SPORTS TECHNOLOGY · TRAINING · ANALYTICS**  
 > **BUILT TO OUTPERFORM.**
 
-**L4NE Training** is a local-first, 100% deterministic athletic training protocol logger and performance analytics engine created under the **L4NE Performance** brand (inspired by **Lane 4** — traditionally the fastest lane in competitive swimming and finswimming).
+**L4NE Training** is a local-first, 100% deterministic athletic training protocol logger, live poolside companion, and multi-sport performance analytics engine created under the **L4NE Performance** brand (inspired by **Lane 4** — traditionally the fastest lane in competitive swimming and finswimming).
 
- Athletes define reusable training protocols (**Templates** — from homogeneous interval sets like `8 × 50m Surface Monofin @ 30s rest` to complex **Pyramids** `50-100-150-100-50m` and **Multi-Round Send-Off Compound Sets** `4 × [2×50m @ 0:50 + 1×100m @ 1:40]`), log each execution in seconds via an **Athletic Centisecond Numpad**, optionally enrich workouts with **Apple HealthKit** & **Apple Watch** data, and measure true physical evolution over time.
+Athletes define reusable training protocols (**Templates** — from homogeneous interval sets like `8 × 50m Surface Monofin @ 30s rest` to complex **Pyramids** `50-100-150-100-50m`, **Multi-Round Send-Off Compound Sets** `4 × [2×50m @ 0:50 + 1×100m @ 1:40]`, **Track Sprints**, **Field Jumps/Throws**, and **Gym Strength Protocols**), organize them by macrocycle folder tags, record executions either via the **Post-Workout Athletic Centisecond Numpad** or the **Live Poolside Companion Timer** (monotonic stopwatch + intra-rep `LAP SPLIT` capture + rest & send-off departure countdown), integrate with **Apple HealthKit** (Read, deterministic matching, Watch lap auto-prefill, and `HKWorkout` Write), and measure true physical evolution over time.
 
 **No AI. No LLMs. No unnecessary cloud. Just training data, deterministic mathematics, and measurable progress.**
 
 ---
 
-## 1. Core Product Principles
+## 1. Full v1.2.0 Capability Matrix
 
-1. **100% Deterministic Mathematics:** All metrics, comparisons, fatigue indices, and workout-to-template matching rules execute via explicit mathematical formulas in Rust (`l4ne-core`). All durations are stored as integer milliseconds (`i64`) with zero floating-point drift.
-2. **Local-First & Private by Design:** All data is stored locally on the athlete's device in SQLite (`rusqlite` bundled). No account, no remote server, and no internet connection required. Full portable JSON Backup/Restore and CSV Export are built in.
-3. **Historical Protocol Integrity (Template Versioning):** Every template protocol computes a canonical **SHA-256 fingerprint** across sport category, pool length, rounds, equipment, distances, strokes, and rest/send-off intervals. If an athlete modifies a template later, a new immutable `TemplateVersion` (`v2`, `v3`, ...) is minted automatically while historical sessions remain permanently bound to the exact protocol version under which they were performed.
-4. **Homogeneous Sets, Pyramids & Compound Rounds (v1.0):**
-   - **Homogeneous Sets:** e.g. `8 × 50m Surface Monofin @ 30s Rest`
-   - **Pyramids:** e.g. `50m - 100m - 150m - 100m - 50m (Bifins)` with slot-by-slot historical delta comparison (`Slot #3: 150m` today vs `Slot #3: 150m` baseline)
-   - **Multi-Round Send-Off Sets:** e.g. `4 × [2×50m @ 0:50 + 1×100m @ 1:40]` with automatic calculation of **Actual Rest** (`SendOff - RepDuration`)
-5. **Observational HealthKit Context:** Pairs session performance with Apple HealthKit recovery metrics (Sleep duration, HRV SDNN, Resting Heart Rate, VO₂ Max) and presents **observational correlations — never unproven causal claims**.
-
----
-
-## 2. Multi-Platform Architecture (`l4ne-core` in Rust + Native SwiftUI)
-
-```text
-L4NE-Performance/
-├── LICENSE                         # GNU GPL v3.0 (GPL-3.0-only)
-├── TRADEMARK.md                    # L4NE Performance Brand & Trademark Protection Policy
-├── README.md
-├── Cargo.toml                      # Rust Workspace
-├── Package.swift                   # Swift 6 Package (L4NECoreFFI, L4NETrainingCore, L4NETrainingUI)
-├── crates/
-│   └── l4ne-core/                  # Shared Multi-Platform Rust Core (iOS & Android)
-│       ├── include/l4ne_core.h     # C-ABI Header for Swift & Kotlin/JNI
-│       └── src/
-│           ├── lib.rs              # Public API & Rust integration test suite
-│           ├── models.rs           # Multi-sport domain models (Swimming, Finswimming, Track, Field, Gym)
-│           ├── engine.rs           # Slot expansion, SHA-256 protocol hashing, Centisecond Numpad parser
-│           ├── analytics.rs        # Deterministic Pace, Consistency CV%, Fatigue Index %, Slot Deltas
-│           ├── matcher.rs          # Deterministic Apple HealthKit workout-to-template matcher
-│           ├── db.rs               # Bundled SQLite storage, migrations, versioning, JSON/CSV exports
-│           └── ffi.rs              # C-ABI JSON command bridge
-├── Sources/
-│   ├── L4NECoreFFI/                # C-FFI Target linking libl4ne_core.a
-│   ├── L4NETrainingCore/           # Swift 6 Core Client, Models, Formatter & HealthKit Adapter
-│   └── L4NETrainingUI/             # SwiftUI App Screens & L4NE Dark/Electric Lime (#CCFF00) Theme
-├── Tests/
-│   └── L4NETrainingCoreTests/      # End-to-End Swift XCTest suite calling into Rust l4ne-core
-├── android/                        # Android NDK & Jetpack Compose integration guide
-└── docs/
-    ├── L4NE_Performance_Project_Overview.md
-    └── ARCHITECTURE_MVP.md
-```
+| Subsystem | v1.2.0 Implementation Status |
+| :--- | :--- |
+| **Multi-Platform Rust Core (`l4ne-core` v1.2.0)** | Bundled SQLite Schema v3 (`rusqlite`), SHA-256 Protocol Versioning (`v1 → v2 → vN`), Macrocycle `folder_tag`, Homogeneous + Pyramid + Compound Slot Expansion, C-ABI FFI (`l4ne_core.h`) for Swift 6 & JNI (`jni_android.rs`) for Android Kotlin. |
+| **Live Poolside Companion Mode (v1.1 / v1.2)** | High-contrast 62pt monospaced stopwatch using monotonic uptime (`systemUptime`), `0.80s` wet-finger debounce guard, intra-rep **`LAP SPLIT`** turn capture, deterministic **Fixed Rest** & **Send-Off Cycle** countdowns (`-10s`, `-5s`, `3..2..1..`, `DEPART NOW!`), and 1-tap SQLite session save. |
+| **Post-Workout Centisecond Numpad** | Zero-punctuation digit entry (`3240` → `32.40s`, `10855` → `1:08.55`), `SAME PREV`, `±0.10s` micro-adjustments, `SKIP`, Stroke Count (`SWOLF` calculation), RPE, and live Running Average. |
+| **Multi-Sport UI & Analytics** | Full support for **Finswimming** (`Surface`, `Apnea`, `Immersion`, `Bifins`), **Swimming** (`Freestyle`, `Butterfly`, `Backstroke`, `Breaststroke`, `IM`), **Track** (`TimedDistance`), **Field** (`DistanceAttempt` in meters, best attempt), and **Gym** (`WeightReps` kg × reps, Total Tonnage kg, Epley Estimated 1RM). |
+| **Native Charts & Analytics** | Swift `Charts` rep-by-rep performance & fatigue curve, interactive Session-vs-Session comparison picker, slot-by-slot Pyramid deltas, Consistency `CV%`, Fatigue Index `%` (negative split detection), and observational HealthKit correlation notes. |
+| **Apple HealthKit Read, Write & Lap Prefill (v1.2)** | Read authorization, deterministic workout-to-template matcher, **1-tap Watch Lap Auto-Prefill (`prefill_reps_from_workout_laps`)** across homogeneous and pyramid slots, **Write/Export (`HKWorkoutBuilder`)** with `exported_external_uuid` duplicate export protection, and Daily Recovery Snapshot editor (Sleep, HRV SDNN, Resting HR, VO₂ Max). |
+| **Local-First Portability & Schema Contract** | Fail-closed **JSON Backup Export & Full Transactional JSON Restore (`import_json`)** preserving all historical `TemplateVersion` rows (`v1..vN`), JSON Schema 2020-12 contract, **CSV Export**, and live SQLite Schema v3 diagnostics. |
 
 ---
 
-## 3. Deterministic Performance Formulas
+## 2. Documentation Index
 
-Given $N$ valid repetitions with durations $t_1, t_2, \dots, t_N$ (in milliseconds) and distances $d_1, d_2, \dots, d_N$ (in meters):
+### Root Documents
+- [CHANGELOG.md](CHANGELOG.md) — Chronological release log across `v0.1.0`, `v1.1.0`, and `v1.2.0`.
+- [LIVE_CAPABILITIES.md](LIVE_CAPABILITIES.md) — Complete matrix of live timers, formulas, and operational boundaries.
+- [HANDOFF.md](HANDOFF.md) — Current engineering snapshot, verified gates, and physical acceptance boundary.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — Architectural invariants, TDD policy, and verification workflow.
+- [SECURITY.md](SECURITY.md) — Local-first privacy architecture and sensitive-data hygiene.
+- [LICENSE](LICENSE) & [TRADEMARK.md](TRADEMARK.md) — GNU GPL v3.0 license and proprietary L4NE Performance trademark protection.
 
-- **Total Active Duration:**
-  $$T_{\text{total}} = \sum_{i=1}^{N} t_i$$
-- **Weighted Pace per 100m (works across both Homogeneous Sets & Pyramids):**
-  $$P_{100} = \frac{\sum_{i=1}^{N} t_i}{\sum_{i=1}^{N} d_i} \times 100$$
-- **Consistency Score (Coefficient of Variation $\text{CV}\%$):**
-  $$\text{CV}(\%) = \left(\frac{\sigma}{\mu}\right) \times 100$$
-- **Fatigue / Pace Degradation Index ($\text{First Half}$ vs $\text{Second Half}$):**
-  $$\text{Fatigue}(\%) = \frac{P_{\text{second\_half}} - P_{\text{first\_half}}}{P_{\text{first\_half}}} \times 100$$
-  *(Negative values indicate a **negative split** — finishing the set faster than starting).*
-- **Actual Rest Earned on Send-Off Cycle $S$:**
-  $$R_i = \max(0, S - t_i)$$
-- **Historical Improvement (%):**
-  $$\text{Improvement}(\%) = \frac{T_{\text{baseline}} - T_{\text{current}}}{T_{\text{baseline}}} \times 100$$
+### Technical & Domain Specifications (`docs/`)
+- [docs/L4NE_Performance_Project_Overview.md](docs/L4NE_Performance_Project_Overview.md) — Original product discovery & vision specification.
+- [docs/ARCHITECTURE_MVP.md](docs/ARCHITECTURE_MVP.md) — System architecture & SQLite DDL blueprint.
+- [docs/Architecture.md](docs/Architecture.md) — Component responsibilities and FFI/JNI boundary rules.
+- [docs/MATHEMATICAL_SPECIFICATION.md](docs/MATHEMATICAL_SPECIFICATION.md) — Exact formulas for Weighted Pace/100m, StdDev $\sigma$, $\text{CV}\%$, Fatigue Index $\%$, Send-Off Rest $R_i$, SWOLF, Epley 1RM, and Tonnage.
+- [docs/CROSS_PLATFORM_DATA_CONTRACT.md](docs/CROSS_PLATFORM_DATA_CONTRACT.md) — Cross-platform JSON & SQLite Schema v3 encoding rules and fail-closed restore limits.
+- [docs/contracts/l4ne-backup-v2.schema.json](docs/contracts/l4ne-backup-v2.schema.json) — JSON Schema 2020-12 contract for portable backups.
+- [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) — Source-vs-verified status table across iOS, macOS, Rust, and Android.
+- [docs/Deployment.md](docs/Deployment.md) — Xcode device deployment, iOS code signing, and Android NDK cross-compilation.
+- [docs/Physical-acceptance.md](docs/Physical-acceptance.md) & [docs/templates/physical-session.md](docs/templates/physical-session.md) — Physical iPhone & poolside acceptance checklist and session record template.
 
 ---
 
-## 4. Build & Verification Instructions
+## 3. Build & Verification Instructions
 
-### Step 1: Build & Test the Rust Core (`l4ne-core`)
+Run the complete 4-stage automated verification pipeline (Rust unit tests, optimized `libl4ne_core.a` static build, 7-gate Swift 6 + Rust FFI verification runner, native `L4NETrainingApp` compilation, and `L4NETraining.xcodeproj` generation):
+
 ```bash
-cargo test --workspace
-cargo build --release
+./scripts/verify.sh
 ```
-
-### Step 2: Build & Test the Swift 6 Package & SwiftUI Layer (`L4NETraining`)
-*(Requires `cargo build --release` first so `target/release/libl4ne_core.a` is present for the Swift linker).*
-```bash
-swift test
-```
-
----
-
-## 5. License & Trademark Protection
-
-- **Source Code License:** Licensed under the **GNU General Public License v3.0 (`GPL-3.0-only`)**. See [LICENSE](LICENSE).
-- **Brand & Trademark Policy:** The names **L4NE**, **L4NE Performance**, **L4NE Training**, **L4NE Analytics**, **L4NE Labs**, the stylized **L4NE** wordmark, and visual assets are proprietary trademarks of **John Akrivos**. Public redistribution of forks under the **L4NE** brand is strictly prohibited. See [TRADEMARK.md](TRADEMARK.md).

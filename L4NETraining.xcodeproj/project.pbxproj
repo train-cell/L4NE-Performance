@@ -1,0 +1,195 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		7E6A25CE1E045AD2A058523B /* L4NECoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4575E06A5F455169B34D39F0 /* L4NECoreBridge.swift */; };
+		AB9942AD06BD5C1298A701B1 /* L4NEHealthKitAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF7BD46B475558BC9C76B913 /* L4NEHealthKitAdapter.swift */; };
+		C43F28466F1956DA8CF4CF90 /* L4NEModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A288B59AD2C35DD0AFB5E651 /* L4NEModels.swift */; };
+		A8C6735B9CE35F5082AF80AD /* L4NEAppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE4416AF61C58A0B95331BE /* L4NEAppStore.swift */; };
+		5F0A524AA3035414BA2E8A10 /* L4NELivePoolsideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96529DB6C46A501C9EE08BD1 /* L4NELivePoolsideView.swift */; };
+		A384123E7D685D86B58C894A /* L4NEScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4514AD3C7AA53978621B625 /* L4NEScreens.swift */; };
+		B6FD8E4DF63A562E96D809D8 /* L4NETheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6954C94ED11355C98765787D /* L4NETheme.swift */; };
+		27AB10FD106C5DD89A8FF51B /* L4NETrainingApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61CFEACD76635421B1D0AD7B /* L4NETrainingApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		4575E06A5F455169B34D39F0 /* L4NECoreBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingCore/L4NECoreBridge.swift"; sourceTree = "<group>"; };
+		AF7BD46B475558BC9C76B913 /* L4NEHealthKitAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingCore/L4NEHealthKitAdapter.swift"; sourceTree = "<group>"; };
+		A288B59AD2C35DD0AFB5E651 /* L4NEModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingCore/L4NEModels.swift"; sourceTree = "<group>"; };
+		DAE4416AF61C58A0B95331BE /* L4NEAppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingUI/L4NEAppStore.swift"; sourceTree = "<group>"; };
+		96529DB6C46A501C9EE08BD1 /* L4NELivePoolsideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingUI/L4NELivePoolsideView.swift"; sourceTree = "<group>"; };
+		A4514AD3C7AA53978621B625 /* L4NEScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingUI/L4NEScreens.swift"; sourceTree = "<group>"; };
+		6954C94ED11355C98765787D /* L4NETheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingUI/L4NETheme.swift"; sourceTree = "<group>"; };
+		61CFEACD76635421B1D0AD7B /* L4NETrainingApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingApp/L4NETrainingApp.swift"; sourceTree = "<group>"; };
+		C2DBF4EF9D605889B54F6416 /* L4NETraining.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = L4NETraining.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		2D2E6A3402C950B78E0D2671 = {
+			isa = PBXGroup;
+			children = (
+				4575E06A5F455169B34D39F0 /* L4NECoreBridge.swift */,
+				AF7BD46B475558BC9C76B913 /* L4NEHealthKitAdapter.swift */,
+				A288B59AD2C35DD0AFB5E651 /* L4NEModels.swift */,
+				DAE4416AF61C58A0B95331BE /* L4NEAppStore.swift */,
+				96529DB6C46A501C9EE08BD1 /* L4NELivePoolsideView.swift */,
+				A4514AD3C7AA53978621B625 /* L4NEScreens.swift */,
+				6954C94ED11355C98765787D /* L4NETheme.swift */,
+				61CFEACD76635421B1D0AD7B /* L4NETrainingApp.swift */,
+				C2DBF4EF9D605889B54F6416 /* L4NETraining.app */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2B267BDF10145E899AE3300B /* L4NETraining */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CF9661A3E1E05BE099E28915 /* Build configuration list for PBXNativeTarget "L4NETraining" */;
+			buildPhases = (
+				376F7C5FC3DA5F6199208A27 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = L4NETraining;
+			productName = L4NETraining;
+			productReference = C2DBF4EF9D605889B54F6416 /* L4NETraining.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		55486F472DEB5DAEA8CF8032 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = 4D6435FF64F051828AC9E49B /* Build configuration list for PBXProject "L4NETraining" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = el;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				el,
+				en,
+			);
+			mainGroup = 2D2E6A3402C950B78E0D2671;
+			productRefGroup = 2D2E6A3402C950B78E0D2671;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2B267BDF10145E899AE3300B /* L4NETraining */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		376F7C5FC3DA5F6199208A27 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E6A25CE1E045AD2A058523B /* L4NECoreBridge.swift in Sources */,
+				AB9942AD06BD5C1298A701B1 /* L4NEHealthKitAdapter.swift in Sources */,
+				C43F28466F1956DA8CF4CF90 /* L4NEModels.swift in Sources */,
+				A8C6735B9CE35F5082AF80AD /* L4NEAppStore.swift in Sources */,
+				5F0A524AA3035414BA2E8A10 /* L4NELivePoolsideView.swift in Sources */,
+				A384123E7D685D86B58C894A /* L4NEScreens.swift in Sources */,
+				B6FD8E4DF63A562E96D809D8 /* L4NETheme.swift in Sources */,
+				27AB10FD106C5DD89A8FF51B /* L4NETrainingApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0B7CA7FA903953149FFD82D4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				MARKETING_VERSION = 1.2.0;
+				CURRENT_PROJECT_VERSION = 3;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		066C463A5CAC54B8BBC2C7CC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				MARKETING_VERSION = 1.2.0;
+				CURRENT_PROJECT_VERSION = 3;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		00150996435A532086E0BD82 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/target/release",
+				);
+				OTHER_LDFLAGS = (
+					"-ll4ne_core",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.l4ne.training;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/crates/l4ne-core/include/l4ne_core.h";
+			};
+			name = Debug;
+		};
+		E4DED378B15A533F9E9A663C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/target/release",
+				);
+				OTHER_LDFLAGS = (
+					"-ll4ne_core",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.l4ne.training;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/crates/l4ne-core/include/l4ne_core.h";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4D6435FF64F051828AC9E49B /* Build configuration list for PBXProject "L4NETraining" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0B7CA7FA903953149FFD82D4 /* Debug */,
+				066C463A5CAC54B8BBC2C7CC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CF9661A3E1E05BE099E28915 /* Build configuration list for PBXNativeTarget "L4NETraining" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				00150996435A532086E0BD82 /* Debug */,
+				E4DED378B15A533F9E9A663C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 55486F472DEB5DAEA8CF8032 /* Project object */;
+}

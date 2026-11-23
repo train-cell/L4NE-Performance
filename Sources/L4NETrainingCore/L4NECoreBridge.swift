@@ -31,7 +31,6 @@ public struct L4NEInitResult: Codable, Equatable, Sendable {
 
 /// Deterministic formatting utilities for athletic durations and paces.
 public enum L4NEDurationFormatter {
-    /// Formats milliseconds (`Int64`) as `SS.cc` or `M:SS.cc` (e.g., `32400` -> `"32.40s"`, `68550` -> `"1:08.55"`).
     public static func formatMs(_ durationMs: Int64, includeUnit: Bool = true) -> String {
         let sign = durationMs < 0 ? "-" : ""
         let absMs = abs(durationMs)
@@ -49,12 +48,10 @@ public enum L4NEDurationFormatter {
         }
     }
 
-    /// Formats normalized pace (`ms / 100m`) as `M:SS.cc /100m` or `SS.cc /100m`.
     public static func formatPacePer100m(_ paceMs: Int64) -> String {
         "\(formatMs(paceMs, includeUnit: false)) /100m"
     }
 
-    /// Formats rest/send-off milliseconds as `30s` or `1:30`.
     public static func formatIntervalMs(_ ms: Int64) -> String {
         let totalSeconds = ms / 1000
         let mins = totalSeconds / 60
@@ -65,11 +62,17 @@ public enum L4NEDurationFormatter {
             return "\(secs)s"
         }
     }
+
+    public static func formatEpochDate(_ epochMs: Int64) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(epochMs) / 1000.0)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: date)
+    }
 }
 
-/// Direct Swift 6 FFI Client backed by the compiled Rust library (`libl4ne_core.a`).
-/// All mathematical analytics, protocol hashing, slot expansions, and SQLite transactions
-/// execute deterministically inside `l4ne-core`.
+/// Direct Swift 6 FFI Client (v1.1) backed by the compiled Rust library (`libl4ne_core.a`).
 public final class L4NECoreClient: @unchecked Sendable {
     public let databasePath: String
     private let encoder: JSONEncoder
@@ -86,13 +89,13 @@ public final class L4NECoreClient: @unchecked Sendable {
         self.decoder = dec
     }
 
-    /// Returns the semantic version of the linked `l4ne-core` Rust engine.
+    /// Returns the semantic version of the linked `l4ne-core` Rust engine ("1.1.0").
     public static var engineVersion: String {
-        guard let cPtr = l4ne_core_version() else { return "0.1.0" }
+        guard let cPtr = l4ne_core_version() else { return "1.1.0" }
         return String(cString: cPtr)
     }
 
-    /// Initializes and migrates the local SQLite database, optionally seeding initial templates & sessions.
+    /// Initializes and migrates the local SQLite database to schema v2.
     @discardableResult
     public func initializeDatabase(seedDemoIfEmpty: Bool = true) throws -> L4NEInitResult {
         let rawJson: String = databasePath.withCString { pathPtr in
@@ -114,12 +117,22 @@ public final class L4NECoreClient: @unchecked Sendable {
         return try execute(Request(digits: digits))
     }
 
-    /// Lists all active Templates with their current `TemplateVersion` and blocks.
-    public func listTemplates() throws -> [TemplateWithVersion] {
+    /// Evaluates a Live Poolside Companion (v1.1) clock tick deterministically inside Rust.
+    public func computeLiveTimerTick(_ input: LiveTimerTickInput) throws -> LiveTimerTickOutput {
+        struct Request: Encodable {
+            let action = "compute_live_timer_tick"
+            let payload: LiveTimerTickInput
+        }
+        return try execute(Request(payload: input))
+    }
+
+    /// Lists Templates with their active `TemplateVersion` and blocks.
+    public func listTemplates(includeArchived: Bool = false) throws -> [TemplateWithVersion] {
         struct Request: Encodable {
             let action = "list_templates"
+            let includeArchived: Bool
         }
-        return try execute(Request())
+        return try execute(Request(includeArchived: includeArchived))
     }
 
     /// Retrieves a single Template by ID.
@@ -129,6 +142,15 @@ public final class L4NECoreClient: @unchecked Sendable {
             let templateId: String
         }
         return try execute(Request(templateId: id))
+    }
+
+    /// Lists all historical protocol versions (`v1..vN`) of a template.
+    public func listTemplateVersions(templateId: String) throws -> [TemplateVersion] {
+        struct Request: Encodable {
+            let action = "list_template_versions"
+            let templateId: String
+        }
+        return try execute(Request(templateId: templateId))
     }
 
     /// Creates a new Template with its initial `TemplateVersion (v1)`.
@@ -151,6 +173,17 @@ public final class L4NECoreClient: @unchecked Sendable {
         return try execute(Request(payload: input, nowMs: nowMs))
     }
 
+    /// Archives or unarchives a Template without modifying historical sessions.
+    public func setTemplateArchived(templateId: String, isArchived: Bool, nowMs: Int64? = nil) throws -> TemplateWithVersion {
+        struct Request: Encodable {
+            let action = "set_template_archived"
+            let templateId: String
+            let isArchived: Bool
+            let nowMs: Int64?
+        }
+        return try execute(Request(templateId: templateId, isArchived: isArchived, nowMs: nowMs))
+    }
+
     /// Expands a `TemplateVersion` into its deterministic sequence of `ExpectedRepSlot`s.
     public func expandTemplateSlots(templateVersionId: String) throws -> [ExpectedRepSlot] {
         struct Request: Encodable {
@@ -168,6 +201,40 @@ public final class L4NECoreClient: @unchecked Sendable {
             let nowMs: Int64?
         }
         return try execute(Request(payload: input, nowMs: nowMs))
+    }
+
+    /// Deletes a session and its repetitions.
+    @discardableResult
+    public func deleteSession(sessionId: String) throws -> Bool {
+        struct Request: Encodable {
+            let action = "delete_session"
+            let sessionId: String
+        }
+        struct Response: Decodable {
+            let deleted: Bool
+        }
+        let res: Response = try execute(Request(sessionId: sessionId))
+        return res.deleted
+    }
+
+    /// Links (or unlinks) a logged session to an imported Apple HealthKit / manual workout.
+    public func linkSessionToWorkout(sessionId: String, workoutId: String?) throws -> SessionWithReps {
+        struct Request: Encodable {
+            let action = "link_session_to_workout"
+            let sessionId: String
+            let workoutId: String?
+        }
+        return try execute(Request(sessionId: sessionId, workoutId: workoutId))
+    }
+
+    /// Marks a session as exported to Apple HealthKit (`HKWorkout`), preventing duplicate exports.
+    public func markSessionExported(sessionId: String, externalUuid: String) throws -> SessionWithReps {
+        struct Request: Encodable {
+            let action = "mark_session_exported"
+            let sessionId: String
+            let externalUuid: String
+        }
+        return try execute(Request(sessionId: sessionId, externalUuid: externalUuid))
     }
 
     /// Lists sessions (optionally filtered by `templateId`).
@@ -225,6 +292,16 @@ public final class L4NECoreClient: @unchecked Sendable {
         return try execute(Request(workoutId: workoutId))
     }
 
+    /// v1.2: Deterministically pre-fills `RepInput` records for a template version from Apple Watch lap events.
+    public func prefillRepsFromWorkoutLaps(workoutId: String, templateVersionId: String) throws -> [RepInput] {
+        struct Request: Encodable {
+            let action = "prefill_reps_from_workout_laps"
+            let workoutId: String
+            let templateVersionId: String
+        }
+        return try execute(Request(workoutId: workoutId, templateVersionId: templateVersionId))
+    }
+
     /// Upserts a daily health snapshot (`YYYY-MM-DD`).
     @discardableResult
     public func upsertHealthSnapshot(_ snapshot: DailyHealthSnapshot) throws -> DailyHealthSnapshot {
@@ -265,6 +342,15 @@ public final class L4NECoreClient: @unchecked Sendable {
         return resp.json
     }
 
+    /// Restores a portable JSON backup string idempotently into the local SQLite database.
+    public func importBackupJSON(_ backupJson: String) throws -> RestoreBackupResult {
+        struct Request: Encodable {
+            let action = "import_json"
+            let backupJson: String
+        }
+        return try execute(Request(backupJson: backupJson))
+    }
+
     /// Exports all logged sessions and repetitions as a CSV string.
     public func exportSessionsCSV() throws -> String {
         struct Request: Encodable {
@@ -275,6 +361,14 @@ public final class L4NECoreClient: @unchecked Sendable {
         }
         let resp: Response = try execute(Request())
         return resp.csv
+    }
+
+    /// Returns diagnostic counts of all tables in the local SQLite database.
+    public func getDatabaseDiagnostics() throws -> DatabaseDiagnostics {
+        struct Request: Encodable {
+            let action = "database_stats"
+        }
+        return try execute(Request())
     }
 
     // MARK: - Private FFI Execution Helpers

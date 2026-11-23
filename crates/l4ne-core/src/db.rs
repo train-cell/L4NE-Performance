@@ -1,11 +1,13 @@
-//! SQLite Storage Engine for `l4ne-core` (`l4ne_core::db`).
+//! SQLite Storage Engine for `l4ne-core` v1.1 (`l4ne_core::db`).
 //!
 //! Implements local-first persistence, template protocol versioning, session logging,
-//! HealthKit workout deduplication, daily training timeline aggregation, and JSON/CSV export.
+//! multi-sport metrics (Swimming, Finswimming, Track, Field, Gym), HealthKit workout
+//! deduplication (both import & export), daily training timeline aggregation,
+//! and full JSON Backup/Restore + CSV export.
 
 use crate::analytics::{
     compute_actual_rest_ms, compute_pace_ms_per_100m, compute_session_metrics,
-    compute_template_analytics, epoch_ms_to_date_iso,
+    compute_swolf_score, compute_template_analytics, epoch_ms_to_date_iso,
 };
 use crate::engine::{
     compute_protocol_hash, compute_total_distance_m, expand_template_slots,
@@ -14,11 +16,11 @@ use crate::engine::{
 use crate::matcher::match_workout_to_templates;
 use crate::models::{
     CoreError, CreateTemplateInput, DailyHealthSnapshot, DailyTrainingTimeline,
-    DatabaseBackupPayload, EnvironmentType, ExpectedRepSlot, ImportWorkoutInput, LogSessionInput,
-    RecordKind, RepInput, RepRecord, RestMode, SessionSummaryMetrics, SessionWithReps,
-    SportCategory, TemplateAnalyticsReport, TemplateBlock, TemplateBlockInput,
-    TemplateMatchCandidate, TemplateVersion, TemplateWithVersion, UpdateTemplateProtocolInput,
-    Workout, WorkoutSourceType,
+    DatabaseBackupPayload, DatabaseDiagnostics, EnvironmentType, ExpectedRepSlot,
+    ImportWorkoutInput, LogSessionInput, RecordKind, RepInput, RepRecord, RestMode,
+    RestoreBackupResult, SessionSummaryMetrics, SessionWithReps, SportCategory,
+    TemplateAnalyticsReport, TemplateBlock, TemplateBlockInput, TemplateMatchCandidate,
+    TemplateVersion, TemplateWithVersion, UpdateTemplateProtocolInput, Workout, WorkoutSourceType,
 };
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
@@ -29,7 +31,7 @@ pub struct L4neDatabase {
 }
 
 impl L4neDatabase {
-    /// Opens or creates a SQLite database at the given file path (or `":memory:"`) and runs schema migrations.
+    /// Opens or creates a SQLite database at the given file path (or `":memory:"`) and runs schema v2 migrations.
     pub fn open(path: &str) -> Result<Self, CoreError> {
         let conn = if path == ":memory:" {
             Connection::open_in_memory()?
@@ -41,7 +43,7 @@ impl L4neDatabase {
         Ok(db)
     }
 
-    /// Runs idempotent DDL migrations for the L4NE Training schema.
+    /// Runs idempotent DDL migrations for the L4NE Training v1.1 (schema v2).
     pub fn migrate(&self) -> Result<(), CoreError> {
         self.conn.execute_batch(
             r#"
@@ -53,6 +55,7 @@ impl L4neDatabase {
                 sport_category TEXT NOT NULL,
                 pool_length_m INTEGER,
                 environment TEXT NOT NULL DEFAULT 'pool',
+                folder_tag TEXT,
                 active_version_id TEXT,
                 is_archived INTEGER NOT NULL DEFAULT 0,
                 created_at_ms INTEGER NOT NULL,
@@ -104,6 +107,7 @@ impl L4neDatabase {
                 active_energy_kcal REAL,
                 avg_heart_rate_bpm REAL,
                 max_heart_rate_bpm REAL,
+                lap_durations_json TEXT NOT NULL DEFAULT '[]',
                 notes TEXT,
                 created_at_ms INTEGER NOT NULL
             );
@@ -113,6 +117,7 @@ impl L4neDatabase {
                 template_id TEXT NOT NULL REFERENCES templates(id) ON DELETE RESTRICT,
                 template_version_id TEXT NOT NULL REFERENCES template_versions(id) ON DELETE RESTRICT,
                 workout_id TEXT REFERENCES workouts(id) ON DELETE SET NULL,
+                exported_external_uuid TEXT,
                 performed_at_ms INTEGER NOT NULL,
                 pool_length_m INTEGER,
                 is_completed INTEGER NOT NULL DEFAULT 1,
@@ -125,6 +130,9 @@ impl L4neDatabase {
                 std_dev_ms REAL,
                 consistency_cv_pct REAL,
                 fatigue_index_pct REAL,
+                total_tonnage_kg REAL,
+                best_estimated_1rm_kg REAL,
+                best_attempt_m REAL,
                 created_at_ms INTEGER NOT NULL
             );
 
@@ -139,10 +147,12 @@ impl L4neDatabase {
                 pace_ms_per_100m INTEGER,
                 actual_rest_ms INTEGER,
                 stroke_count INTEGER,
+                swolf_score INTEGER,
                 rpe INTEGER,
                 weight_kg REAL,
                 reps_completed INTEGER,
                 attempt_result_m REAL,
+                splits_json TEXT NOT NULL DEFAULT '[]',
                 is_skipped INTEGER NOT NULL DEFAULT 0,
                 notes TEXT,
                 UNIQUE(session_id, slot_index)
@@ -163,6 +173,21 @@ impl L4neDatabase {
             CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(started_at_ms DESC);
             "#,
         )?;
+
+        // Resilient schema v1 -> v2 -> v3 column upgrades for pre-existing local SQLite databases
+        let alter_statements = [
+            "ALTER TABLE templates ADD COLUMN folder_tag TEXT",
+            "ALTER TABLE workouts ADD COLUMN lap_durations_json TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE sessions ADD COLUMN exported_external_uuid TEXT",
+            "ALTER TABLE sessions ADD COLUMN total_tonnage_kg REAL",
+            "ALTER TABLE sessions ADD COLUMN best_estimated_1rm_kg REAL",
+            "ALTER TABLE sessions ADD COLUMN best_attempt_m REAL",
+            "ALTER TABLE rep_records ADD COLUMN swolf_score INTEGER",
+            "ALTER TABLE rep_records ADD COLUMN splits_json TEXT NOT NULL DEFAULT '[]'",
+        ];
+        for sql in alter_statements {
+            let _ = self.conn.execute(sql, []);
+        }
         Ok(())
     }
 
@@ -202,8 +227,8 @@ impl L4neDatabase {
             r#"
             INSERT INTO templates (
                 id, name, sport_category, pool_length_m, environment,
-                active_version_id, is_archived, created_at_ms, updated_at_ms
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?7)
+                folder_tag, active_version_id, is_archived, created_at_ms, updated_at_ms
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?8)
             "#,
             params![
                 template_id,
@@ -211,6 +236,7 @@ impl L4neDatabase {
                 input.sport_category.as_str(),
                 input.pool_length_m,
                 input.environment.as_str(),
+                input.folder_tag,
                 version_id,
                 now_ms
             ],
@@ -301,11 +327,11 @@ impl L4neDatabase {
         );
 
         let tx = self.conn.transaction()?;
+        let new_folder = input.folder_tag.clone().or(existing.folder_tag.clone());
         if new_hash == existing.active_version.protocol_hash {
-            // Protocol is physiologically identical: update non-structural metadata only
             tx.execute(
-                "UPDATE templates SET name = ?1, updated_at_ms = ?2 WHERE id = ?3",
-                params![new_name, now_ms, existing.id],
+                "UPDATE templates SET name = ?1, folder_tag = ?2, updated_at_ms = ?3 WHERE id = ?4",
+                params![new_name, new_folder, now_ms, existing.id],
             )?;
             tx.execute(
                 "UPDATE template_versions SET target_pace_ms_per_100m = ?1, notes = ?2 WHERE id = ?3",
@@ -316,7 +342,6 @@ impl L4neDatabase {
                 ],
             )?;
         } else {
-            // Mint new TemplateVersion (v + 1) to preserve historical integrity
             let next_version_num = existing.active_version.version_number + 1;
             let new_version_id = Uuid::now_v7().to_string();
             let equipment_json = serde_json::to_string(&input.equipment)?;
@@ -374,12 +399,13 @@ impl L4neDatabase {
             tx.execute(
                 r#"
                 UPDATE templates
-                SET name = ?1, pool_length_m = ?2, active_version_id = ?3, updated_at_ms = ?4
-                WHERE id = ?5
+                SET name = ?1, pool_length_m = ?2, folder_tag = ?3, active_version_id = ?4, updated_at_ms = ?5
+                WHERE id = ?6
                 "#,
                 params![
                     new_name,
                     input.pool_length_m,
+                    new_folder,
                     new_version_id,
                     now_ms,
                     existing.id
@@ -389,6 +415,44 @@ impl L4neDatabase {
 
         tx.commit()?;
         self.get_template(&existing.id)
+    }
+
+    /// Archives or unarchives a template without deleting historical sessions.
+    pub fn set_template_archived(
+        &mut self,
+        template_id: &str,
+        is_archived: bool,
+        now_ms: i64,
+    ) -> Result<TemplateWithVersion, CoreError> {
+        let changed = self.conn.execute(
+            "UPDATE templates SET is_archived = ?1, updated_at_ms = ?2 WHERE id = ?3",
+            params![if is_archived { 1 } else { 0 }, now_ms, template_id],
+        )?;
+        if changed == 0 {
+            return Err(CoreError::NotFound(format!(
+                "Template not found: {template_id}"
+            )));
+        }
+        self.get_template(template_id)
+    }
+
+    /// Lists all protocol versions (`v1..vN`) of a template in descending version order.
+    pub fn list_template_versions(
+        &self,
+        template_id: &str,
+    ) -> Result<Vec<TemplateVersion>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM template_versions WHERE template_id = ?1 ORDER BY version_number DESC",
+        )?;
+        let ids: Vec<String> = stmt
+            .query_map(params![template_id], |r| r.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut versions = Vec::with_capacity(ids.len());
+        for vid in ids {
+            versions.push(self.get_template_version(&vid)?);
+        }
+        Ok(versions)
     }
 
     /// Loads a `TemplateVersion` along with its ordered `TemplateBlock`s.
@@ -520,7 +584,7 @@ impl L4neDatabase {
             .query_row(
                 r#"
                 SELECT t.id, t.name, t.sport_category, t.pool_length_m, t.environment,
-                       t.active_version_id, t.is_archived, t.created_at_ms, t.updated_at_ms,
+                       t.folder_tag, t.active_version_id, t.is_archived, t.created_at_ms, t.updated_at_ms,
                        (SELECT COUNT(*) FROM sessions s WHERE s.template_id = t.id)
                 FROM templates t
                 WHERE t.id = ?1
@@ -533,37 +597,50 @@ impl L4neDatabase {
                         r.get::<_, String>(2)?,
                         r.get::<_, Option<i32>>(3)?,
                         r.get::<_, String>(4)?,
-                        r.get::<_, String>(5)?,
-                        r.get::<_, i32>(6)? != 0,
-                        r.get::<_, i64>(7)?,
+                        r.get::<_, Option<String>>(5)?,
+                        r.get::<_, String>(6)?,
+                        r.get::<_, i32>(7)? != 0,
                         r.get::<_, i64>(8)?,
-                        r.get::<_, i32>(9)?,
+                        r.get::<_, i64>(9)?,
+                        r.get::<_, i32>(10)?,
                     ))
                 },
             )
             .optional()?
             .ok_or_else(|| CoreError::NotFound(format!("Template not found: {template_id}")))?;
 
-        let active_version = self.get_template_version(&row.5)?;
+        let active_version = self.get_template_version(&row.6)?;
         Ok(TemplateWithVersion {
             id: row.0,
             name: row.1,
             sport_category: SportCategory::from_db(&row.2)?,
             pool_length_m: row.3,
             environment: EnvironmentType::from_db(&row.4)?,
-            is_archived: row.6,
+            folder_tag: row.5,
+            is_archived: row.7,
             active_version,
-            total_sessions_count: row.9,
-            created_at_ms: row.7,
-            updated_at_ms: row.8,
+            total_sessions_count: row.10,
+            created_at_ms: row.8,
+            updated_at_ms: row.9,
         })
     }
 
-    /// Lists all templates ordered by most recently updated.
+    /// Lists all active templates ordered by most recently updated.
     pub fn list_templates(&self) -> Result<Vec<TemplateWithVersion>, CoreError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT id FROM templates WHERE is_archived = 0 ORDER BY updated_at_ms DESC")?;
+        self.list_templates_filtered(false)
+    }
+
+    /// Lists templates, optionally including archived ones.
+    pub fn list_templates_filtered(
+        &self,
+        include_archived: bool,
+    ) -> Result<Vec<TemplateWithVersion>, CoreError> {
+        let sql = if include_archived {
+            "SELECT id FROM templates ORDER BY is_archived ASC, updated_at_ms DESC"
+        } else {
+            "SELECT id FROM templates WHERE is_archived = 0 ORDER BY updated_at_ms DESC"
+        };
+        let mut stmt = self.conn.prepare(sql)?;
         let ids: Vec<String> = stmt
             .query_map([], |r| r.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
@@ -637,6 +714,12 @@ impl L4neDatabase {
                 compute_actual_rest_ms(slot.rest_mode, slot.rest_or_sendoff_ms, rep_in.duration_ms)
             };
 
+            let swolf_score = if rep_in.is_skipped {
+                None
+            } else {
+                compute_swolf_score(rep_in.duration_ms, rep_in.stroke_count)
+            };
+
             built_reps.push(RepRecord {
                 id: Uuid::now_v7().to_string(),
                 session_id: session_id.clone(),
@@ -648,10 +731,12 @@ impl L4neDatabase {
                 pace_ms_per_100m,
                 actual_rest_ms,
                 stroke_count: rep_in.stroke_count,
+                swolf_score,
                 rpe: rep_in.rpe,
                 weight_kg: rep_in.weight_kg,
                 reps_completed: rep_in.reps_completed,
                 attempt_result_m: rep_in.attempt_result_m,
+                splits_ms: rep_in.splits_ms.clone(),
                 is_skipped: rep_in.is_skipped,
                 notes: rep_in.notes.clone(),
             });
@@ -666,14 +751,16 @@ impl L4neDatabase {
             r#"
             INSERT INTO sessions (
                 id, template_id, template_version_id, workout_id,
-                performed_at_ms, pool_length_m, is_completed, notes,
+                exported_external_uuid, performed_at_ms, pool_length_m,
+                is_completed, notes,
                 total_active_duration_ms, avg_duration_ms,
                 best_rep_duration_ms, worst_rep_duration_ms,
                 avg_pace_ms_per_100m, std_dev_ms, consistency_cv_pct,
-                fatigue_index_pct, created_at_ms
+                fatigue_index_pct, total_tonnage_kg, best_estimated_1rm_kg,
+                best_attempt_m, created_at_ms
             ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, 1, ?7,
-                ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16
+                ?1, ?2, ?3, ?4, NULL, ?5, ?6, 1, ?7,
+                ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19
             )
             "#,
             params![
@@ -692,21 +779,25 @@ impl L4neDatabase {
                 metrics.std_dev_ms,
                 metrics.consistency_cv_pct,
                 metrics.fatigue_index_pct,
+                metrics.total_tonnage_kg,
+                metrics.best_estimated_1rm_kg,
+                metrics.best_attempt_m,
                 now_ms
             ],
         )?;
 
         for rep in &built_reps {
+            let splits_json = serde_json::to_string(&rep.splits_ms)?;
             tx.execute(
                 r#"
                 INSERT INTO rep_records (
                     id, session_id, slot_index, round_index, block_order,
                     distance_m, duration_ms, pace_ms_per_100m, actual_rest_ms,
-                    stroke_count, rpe, weight_kg, reps_completed,
-                    attempt_result_m, is_skipped, notes
+                    stroke_count, swolf_score, rpe, weight_kg, reps_completed,
+                    attempt_result_m, splits_json, is_skipped, notes
                 ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
-                    ?10, ?11, ?12, ?13, ?14, ?15, ?16
+                    ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18
                 )
                 "#,
                 params![
@@ -720,10 +811,12 @@ impl L4neDatabase {
                     rep.pace_ms_per_100m,
                     rep.actual_rest_ms,
                     rep.stroke_count,
+                    rep.swolf_score,
                     rep.rpe,
                     rep.weight_kg,
                     rep.reps_completed,
                     rep.attempt_result_m,
+                    splits_json,
                     if rep.is_skipped { 1 } else { 0 },
                     rep.notes
                 ],
@@ -734,6 +827,55 @@ impl L4neDatabase {
         self.get_session(&session_id)
     }
 
+    /// Deletes a session and its repetitions.
+    pub fn delete_session(&mut self, session_id: &str) -> Result<bool, CoreError> {
+        let deleted = self
+            .conn
+            .execute("DELETE FROM sessions WHERE id = ?1", params![session_id])?;
+        Ok(deleted > 0)
+    }
+
+    /// Links (or unlinks when `workout_id` is `None`) an existing session to an imported workout.
+    pub fn link_session_to_workout(
+        &mut self,
+        session_id: &str,
+        workout_id: Option<&str>,
+    ) -> Result<SessionWithReps, CoreError> {
+        if let Some(wid) = workout_id {
+            let _ = self.get_workout(wid)?;
+        }
+        let changed = self.conn.execute(
+            "UPDATE sessions SET workout_id = ?1 WHERE id = ?2",
+            params![workout_id, session_id],
+        )?;
+        if changed == 0 {
+            return Err(CoreError::NotFound(format!(
+                "Session not found: {session_id}"
+            )));
+        }
+        self.get_session(session_id)
+    }
+
+    /// Marks a session as exported to Apple HealthKit (`HKWorkout`) or Health Connect,
+    /// preventing duplicate exports of the same session.
+    pub fn mark_session_exported(
+        &mut self,
+        session_id: &str,
+        external_uuid: &str,
+    ) -> Result<SessionWithReps, CoreError> {
+        let existing = self.get_session(session_id)?;
+        if let Some(already) = existing.exported_external_uuid {
+            return Err(CoreError::DuplicateExternalWorkout(format!(
+                "Session {session_id} is already exported as {already}"
+            )));
+        }
+        self.conn.execute(
+            "UPDATE sessions SET exported_external_uuid = ?1 WHERE id = ?2",
+            params![external_uuid, session_id],
+        )?;
+        self.get_session(session_id)
+    }
+
     /// Retrieves a single `SessionWithReps` by ID.
     pub fn get_session(&self, session_id: &str) -> Result<SessionWithReps, CoreError> {
         let row = self
@@ -742,12 +884,15 @@ impl L4neDatabase {
                 r#"
                 SELECT s.id, s.template_id, t.name, s.template_version_id,
                        tv.version_number, tv.protocol_hash, tv.is_homogeneous,
-                       s.workout_id, s.performed_at_ms, s.pool_length_m,
+                       s.workout_id, s.exported_external_uuid,
+                       s.performed_at_ms, s.pool_length_m,
                        s.is_completed, s.notes,
                        s.total_active_duration_ms, s.avg_duration_ms,
                        s.best_rep_duration_ms, s.worst_rep_duration_ms,
                        s.avg_pace_ms_per_100m, s.std_dev_ms,
-                       s.consistency_cv_pct, s.fatigue_index_pct, s.created_at_ms
+                       s.consistency_cv_pct, s.fatigue_index_pct,
+                       s.total_tonnage_kg, s.best_estimated_1rm_kg, s.best_attempt_m,
+                       s.created_at_ms
                 FROM sessions s
                 JOIN templates t ON t.id = s.template_id
                 JOIN template_versions tv ON tv.id = s.template_version_id
@@ -764,21 +909,25 @@ impl L4neDatabase {
                         r.get::<_, String>(5)?,
                         r.get::<_, i32>(6)? != 0,
                         r.get::<_, Option<String>>(7)?,
-                        r.get::<_, i64>(8)?,
-                        r.get::<_, Option<i32>>(9)?,
-                        r.get::<_, i32>(10)? != 0,
-                        r.get::<_, Option<String>>(11)?,
+                        r.get::<_, Option<String>>(8)?,
+                        r.get::<_, i64>(9)?,
+                        r.get::<_, Option<i32>>(10)?,
+                        r.get::<_, i32>(11)? != 0,
+                        r.get::<_, Option<String>>(12)?,
                         SessionSummaryMetrics {
-                            total_active_duration_ms: r.get(12)?,
-                            avg_duration_ms: r.get(13)?,
-                            best_rep_duration_ms: r.get(14)?,
-                            worst_rep_duration_ms: r.get(15)?,
-                            avg_pace_ms_per_100m: r.get(16)?,
-                            std_dev_ms: r.get(17)?,
-                            consistency_cv_pct: r.get(18)?,
-                            fatigue_index_pct: r.get(19)?,
+                            total_active_duration_ms: r.get(13)?,
+                            avg_duration_ms: r.get(14)?,
+                            best_rep_duration_ms: r.get(15)?,
+                            worst_rep_duration_ms: r.get(16)?,
+                            avg_pace_ms_per_100m: r.get(17)?,
+                            std_dev_ms: r.get(18)?,
+                            consistency_cv_pct: r.get(19)?,
+                            fatigue_index_pct: r.get(20)?,
+                            total_tonnage_kg: r.get(21)?,
+                            best_estimated_1rm_kg: r.get(22)?,
+                            best_attempt_m: r.get(23)?,
                         },
-                        r.get::<_, i64>(20)?,
+                        r.get::<_, i64>(24)?,
                     ))
                 },
             )
@@ -789,8 +938,8 @@ impl L4neDatabase {
             r#"
             SELECT id, session_id, slot_index, round_index, block_order,
                    distance_m, duration_ms, pace_ms_per_100m, actual_rest_ms,
-                   stroke_count, rpe, weight_kg, reps_completed,
-                   attempt_result_m, is_skipped, notes
+                   stroke_count, swolf_score, rpe, weight_kg, reps_completed,
+                   attempt_result_m, splits_json, is_skipped, notes
             FROM rep_records
             WHERE session_id = ?1
             ORDER BY slot_index ASC
@@ -799,6 +948,8 @@ impl L4neDatabase {
 
         let reps = rep_stmt
             .query_map(params![session_id], |r| {
+                let splits_str: String = r.get(15)?;
+                let splits_ms: Vec<i64> = serde_json::from_str(&splits_str).unwrap_or_default();
                 Ok(RepRecord {
                     id: r.get(0)?,
                     session_id: r.get(1)?,
@@ -810,12 +961,14 @@ impl L4neDatabase {
                     pace_ms_per_100m: r.get(7)?,
                     actual_rest_ms: r.get(8)?,
                     stroke_count: r.get(9)?,
-                    rpe: r.get(10)?,
-                    weight_kg: r.get(11)?,
-                    reps_completed: r.get(12)?,
-                    attempt_result_m: r.get(13)?,
-                    is_skipped: r.get::<_, i32>(14)? != 0,
-                    notes: r.get(15)?,
+                    swolf_score: r.get(10)?,
+                    rpe: r.get(11)?,
+                    weight_kg: r.get(12)?,
+                    reps_completed: r.get(13)?,
+                    attempt_result_m: r.get(14)?,
+                    splits_ms,
+                    is_skipped: r.get::<_, i32>(16)? != 0,
+                    notes: r.get(17)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -829,13 +982,14 @@ impl L4neDatabase {
             protocol_hash: row.5,
             is_homogeneous: row.6,
             workout_id: row.7,
-            performed_at_ms: row.8,
-            pool_length_m: row.9,
-            is_completed: row.10,
-            notes: row.11,
-            metrics: row.12,
+            exported_external_uuid: row.8,
+            performed_at_ms: row.9,
+            pool_length_m: row.10,
+            is_completed: row.11,
+            notes: row.12,
+            metrics: row.13,
             reps,
-            created_at_ms: row.13,
+            created_at_ms: row.14,
         })
     }
 
@@ -886,7 +1040,6 @@ impl L4neDatabase {
     }
 
     /// Imports an Apple HealthKit (`HKWorkout`), Health Connect, or manual workout.
-    /// Prevents duplicate imports using `external_source_uuid`.
     pub fn import_workout(
         &mut self,
         input: &ImportWorkoutInput,
@@ -907,6 +1060,7 @@ impl L4neDatabase {
         }
 
         let id = Uuid::now_v7().to_string();
+        let laps_json = serde_json::to_string(&input.lap_durations_ms)?;
         self.conn.execute(
             r#"
             INSERT INTO workouts (
@@ -914,8 +1068,8 @@ impl L4neDatabase {
                 external_source_name, started_at_ms, ended_at_ms,
                 duration_ms, total_distance_m, pool_length_m,
                 active_energy_kcal, avg_heart_rate_bpm, max_heart_rate_bpm,
-                notes, created_at_ms
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                lap_durations_json, notes, created_at_ms
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
             "#,
             params![
                 id,
@@ -931,6 +1085,7 @@ impl L4neDatabase {
                 input.active_energy_kcal,
                 input.avg_heart_rate_bpm,
                 input.max_heart_rate_bpm,
+                laps_json,
                 input.notes,
                 now_ms
             ],
@@ -949,12 +1104,14 @@ impl L4neDatabase {
                        external_source_name, started_at_ms, ended_at_ms,
                        duration_ms, total_distance_m, pool_length_m,
                        active_energy_kcal, avg_heart_rate_bpm, max_heart_rate_bpm,
-                       notes, created_at_ms
+                       lap_durations_json, notes, created_at_ms
                 FROM workouts
                 WHERE id = ?1
                 "#,
                 params![workout_id],
                 |r| {
+                    let laps_str: String = r.get(13)?;
+                    let laps: Vec<i64> = serde_json::from_str(&laps_str).unwrap_or_default();
                     Ok((
                         r.get::<_, String>(0)?,
                         r.get::<_, String>(1)?,
@@ -969,8 +1126,9 @@ impl L4neDatabase {
                         r.get::<_, Option<f64>>(10)?,
                         r.get::<_, Option<f64>>(11)?,
                         r.get::<_, Option<f64>>(12)?,
-                        r.get::<_, Option<String>>(13)?,
-                        r.get::<_, i64>(14)?,
+                        laps,
+                        r.get::<_, Option<String>>(14)?,
+                        r.get::<_, i64>(15)?,
                     ))
                 },
             )
@@ -991,9 +1149,65 @@ impl L4neDatabase {
             active_energy_kcal: row.10,
             avg_heart_rate_bpm: row.11,
             max_heart_rate_bpm: row.12,
-            notes: row.13,
-            created_at_ms: row.14,
+            lap_durations_ms: row.13,
+            notes: row.14,
+            created_at_ms: row.15,
         })
+    }
+
+    /// v1.2: Deterministically pre-fills `RepInput` records for a `TemplateVersion` using
+    /// recorded `HKWorkoutEvent` lap segments (`workout.lap_durations_ms`).
+    /// When a slot's distance is a multiple of `pool_length_m` (e.g., a 100m or 150m slot in a 50m pool),
+    /// consecutive 50m watch laps are summed into `duration_ms` and preserved in `splits_ms`.
+    pub fn prefill_reps_from_workout_laps(
+        &self,
+        workout_id: &str,
+        template_version_id: &str,
+    ) -> Result<Vec<RepInput>, CoreError> {
+        let workout = self.get_workout(workout_id)?;
+        let slots = self.expand_version_slots(template_version_id)?;
+        if workout.lap_durations_ms.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let pool_len = workout.pool_length_m.unwrap_or(50).max(25);
+        let mut lap_cursor = 0usize;
+        let mut prefilled = Vec::new();
+
+        for slot in &slots {
+            if lap_cursor >= workout.lap_durations_ms.len() {
+                break;
+            }
+            let slot_dist = slot.distance_m.unwrap_or(pool_len).max(pool_len);
+            let laps_needed = ((slot_dist + (pool_len / 2)) / pool_len).max(1) as usize;
+            if lap_cursor + laps_needed > workout.lap_durations_ms.len() {
+                break;
+            }
+
+            let slice = &workout.lap_durations_ms[lap_cursor..lap_cursor + laps_needed];
+            let total_dur: i64 = slice.iter().sum();
+            let splits = if laps_needed > 1 {
+                slice.to_vec()
+            } else {
+                Vec::new()
+            };
+
+            prefilled.push(RepInput {
+                slot_index: slot.slot_index,
+                duration_ms: Some(total_dur),
+                stroke_count: None,
+                rpe: None,
+                weight_kg: None,
+                reps_completed: None,
+                attempt_result_m: None,
+                splits_ms: splits,
+                is_skipped: false,
+                notes: Some("Auto-prefilled from Apple Watch lap events".to_string()),
+            });
+            lap_cursor += laps_needed;
+        }
+
+        Ok(prefilled)
     }
 
     /// Lists all imported or manual workouts ordered by `started_at_ms DESC`.
@@ -1100,7 +1314,6 @@ impl L4neDatabase {
     }
 
     /// Builds the unified `DailyTrainingTimeline` for a specific date (`YYYY-MM-DD`).
-    /// Prevents double-counting volume when a template session is linked to a parent Apple Watch workout.
     pub fn get_daily_timeline(&self, date_iso: &str) -> Result<DailyTrainingTimeline, CoreError> {
         let workouts: Vec<Workout> = self
             .list_workouts()?
@@ -1114,7 +1327,6 @@ impl L4neDatabase {
             .filter(|s| epoch_ms_to_date_iso(s.performed_at_ms) == date_iso)
             .collect();
 
-        // Total distance = sum of workouts on that day + sum of standalone sessions (not linked to any workout on that day)
         let workout_ids_on_day: std::collections::HashSet<&str> =
             workouts.iter().map(|w| w.id.as_str()).collect();
 
@@ -1166,10 +1378,18 @@ impl L4neDatabase {
 
     /// Exports the entire local database into a portable, deterministic JSON backup string.
     pub fn export_backup_json(&self, exported_at_ms: i64) -> Result<String, CoreError> {
+        let templates = self.list_templates_filtered(true)?;
+        let mut all_template_versions = Vec::new();
+        for tpl in &templates {
+            let mut versions = self.list_template_versions(&tpl.id)?;
+            versions.reverse(); // chronological v1..vN
+            all_template_versions.extend(versions);
+        }
         let payload = DatabaseBackupPayload {
-            schema_version: 1,
+            schema_version: 2,
             exported_at_ms,
-            templates: self.list_templates()?,
+            templates,
+            all_template_versions,
             workouts: self.list_workouts()?,
             sessions: self.list_all_sessions()?,
             health_snapshots: self.list_health_snapshots()?,
@@ -1177,11 +1397,360 @@ impl L4neDatabase {
         Ok(serde_json::to_string_pretty(&payload)?)
     }
 
+    /// Restores a portable JSON backup (`DatabaseBackupPayload`) idempotently into the local SQLite database.
+    /// Enforces fail-closed size and item count bounds before opening any transaction.
+    pub fn import_backup_json(&mut self, backup_json: &str) -> Result<RestoreBackupResult, CoreError> {
+        const MAX_BACKUP_BYTES: usize = 33_554_432; // 32 MiB
+        const MAX_BACKUP_TEMPLATES: usize = 10_000;
+        const MAX_BACKUP_SESSIONS: usize = 100_000;
+
+        if backup_json.len() > MAX_BACKUP_BYTES {
+            return Err(CoreError::Validation(format!(
+                "Backup payload exceeds 32 MiB limit ({} bytes)",
+                backup_json.len()
+            )));
+        }
+
+        let payload: DatabaseBackupPayload = serde_json::from_str(backup_json)?;
+        if payload.schema_version < 1 || payload.schema_version > 3 {
+            return Err(CoreError::Validation(format!(
+                "Unsupported backup schema_version: {}",
+                payload.schema_version
+            )));
+        }
+        if payload.templates.len() > MAX_BACKUP_TEMPLATES {
+            return Err(CoreError::Validation(format!(
+                "Backup templates count ({}) exceeds limit ({MAX_BACKUP_TEMPLATES})",
+                payload.templates.len()
+            )));
+        }
+        if payload.sessions.len() > MAX_BACKUP_SESSIONS {
+            return Err(CoreError::Validation(format!(
+                "Backup sessions count ({}) exceeds limit ({MAX_BACKUP_SESSIONS})",
+                payload.sessions.len()
+            )));
+        }
+
+        let tx = self.conn.transaction()?;
+        let mut templates_restored = 0usize;
+        let mut workouts_restored = 0usize;
+        let mut sessions_restored = 0usize;
+        let mut health_snapshots_restored = 0usize;
+
+        for tpl in &payload.templates {
+            let exists: Option<String> = tx
+                .query_row(
+                    "SELECT id FROM templates WHERE id = ?1",
+                    params![tpl.id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if exists.is_none() {
+                tx.execute(
+                    r#"
+                    INSERT INTO templates (
+                        id, name, sport_category, pool_length_m, environment,
+                        folder_tag, active_version_id, is_archived, created_at_ms, updated_at_ms
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                    "#,
+                    params![
+                        tpl.id,
+                        tpl.name,
+                        tpl.sport_category.as_str(),
+                        tpl.pool_length_m,
+                        tpl.environment.as_str(),
+                        tpl.folder_tag,
+                        tpl.active_version.id,
+                        if tpl.is_archived { 1 } else { 0 },
+                        tpl.created_at_ms,
+                        tpl.updated_at_ms
+                    ],
+                )?;
+                templates_restored += 1;
+            }
+
+            let ver = &tpl.active_version;
+            let ver_exists: Option<String> = tx
+                .query_row(
+                    "SELECT id FROM template_versions WHERE id = ?1",
+                    params![ver.id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if ver_exists.is_none() {
+                let eq_json = serde_json::to_string(&ver.equipment)?;
+                tx.execute(
+                    r#"
+                    INSERT INTO template_versions (
+                        id, template_id, version_number, protocol_hash,
+                        rounds, round_rest_ms, equipment_json, target_pace_ms_per_100m,
+                        notes, total_reps, total_distance_m, is_homogeneous, created_at_ms
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                    "#,
+                    params![
+                        ver.id,
+                        ver.template_id,
+                        ver.version_number,
+                        ver.protocol_hash,
+                        ver.rounds,
+                        ver.round_rest_ms,
+                        eq_json,
+                        ver.target_pace_ms_per_100m,
+                        ver.notes,
+                        ver.total_reps,
+                        ver.total_distance_m,
+                        if ver.is_homogeneous { 1 } else { 0 },
+                        ver.created_at_ms
+                    ],
+                )?;
+
+                for b in &ver.blocks {
+                    tx.execute(
+                        r#"
+                        INSERT OR IGNORE INTO template_blocks (
+                            id, template_version_id, block_order, repeat_count,
+                            record_kind, distance_m, stroke_or_movement,
+                            rest_mode, rest_or_sendoff_ms, target_duration_ms
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                        "#,
+                        params![
+                            b.id,
+                            b.template_version_id,
+                            b.block_order,
+                            b.repeat_count,
+                            b.record_kind.as_str(),
+                            b.distance_m,
+                            b.stroke_or_movement,
+                            b.rest_mode.as_str(),
+                            b.rest_or_sendoff_ms,
+                            b.target_duration_ms
+                        ],
+                    )?;
+                }
+            }
+        }
+
+        // Restore any additional historical TemplateVersions (v1..vN) so sessions referencing old versions satisfy FK constraints
+        for ver in &payload.all_template_versions {
+            let ver_exists: Option<String> = tx
+                .query_row(
+                    "SELECT id FROM template_versions WHERE id = ?1",
+                    params![ver.id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if ver_exists.is_none() {
+                let eq_json = serde_json::to_string(&ver.equipment)?;
+                tx.execute(
+                    r#"
+                    INSERT INTO template_versions (
+                        id, template_id, version_number, protocol_hash,
+                        rounds, round_rest_ms, equipment_json, target_pace_ms_per_100m,
+                        notes, total_reps, total_distance_m, is_homogeneous, created_at_ms
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                    "#,
+                    params![
+                        ver.id,
+                        ver.template_id,
+                        ver.version_number,
+                        ver.protocol_hash,
+                        ver.rounds,
+                        ver.round_rest_ms,
+                        eq_json,
+                        ver.target_pace_ms_per_100m,
+                        ver.notes,
+                        ver.total_reps,
+                        ver.total_distance_m,
+                        if ver.is_homogeneous { 1 } else { 0 },
+                        ver.created_at_ms
+                    ],
+                )?;
+
+                for b in &ver.blocks {
+                    tx.execute(
+                        r#"
+                        INSERT OR IGNORE INTO template_blocks (
+                            id, template_version_id, block_order, repeat_count,
+                            record_kind, distance_m, stroke_or_movement,
+                            rest_mode, rest_or_sendoff_ms, target_duration_ms
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                        "#,
+                        params![
+                            b.id,
+                            b.template_version_id,
+                            b.block_order,
+                            b.repeat_count,
+                            b.record_kind.as_str(),
+                            b.distance_m,
+                            b.stroke_or_movement,
+                            b.rest_mode.as_str(),
+                            b.rest_or_sendoff_ms,
+                            b.target_duration_ms
+                        ],
+                    )?;
+                }
+            }
+        }
+
+        for w in &payload.workouts {
+            let inserted = tx.execute(
+                r#"
+                INSERT OR IGNORE INTO workouts (
+                    id, sport_category, source_type, external_source_uuid,
+                    external_source_name, started_at_ms, ended_at_ms,
+                    duration_ms, total_distance_m, pool_length_m,
+                    active_energy_kcal, avg_heart_rate_bpm, max_heart_rate_bpm,
+                    notes, created_at_ms
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                "#,
+                params![
+                    w.id,
+                    w.sport_category.as_str(),
+                    w.source_type.as_str(),
+                    w.external_source_uuid,
+                    w.external_source_name,
+                    w.started_at_ms,
+                    w.ended_at_ms,
+                    w.duration_ms,
+                    w.total_distance_m,
+                    w.pool_length_m,
+                    w.active_energy_kcal,
+                    w.avg_heart_rate_bpm,
+                    w.max_heart_rate_bpm,
+                    w.notes,
+                    w.created_at_ms
+                ],
+            )?;
+            if inserted > 0 {
+                workouts_restored += 1;
+            }
+        }
+
+        for s in &payload.sessions {
+            let s_exists: Option<String> = tx
+                .query_row(
+                    "SELECT id FROM sessions WHERE id = ?1",
+                    params![s.id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if s_exists.is_none() {
+                tx.execute(
+                    r#"
+                    INSERT INTO sessions (
+                        id, template_id, template_version_id, workout_id,
+                        exported_external_uuid, performed_at_ms, pool_length_m,
+                        is_completed, notes,
+                        total_active_duration_ms, avg_duration_ms,
+                        best_rep_duration_ms, worst_rep_duration_ms,
+                        avg_pace_ms_per_100m, std_dev_ms, consistency_cv_pct,
+                        fatigue_index_pct, total_tonnage_kg, best_estimated_1rm_kg,
+                        best_attempt_m, created_at_ms
+                    ) VALUES (
+                        ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                        ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+                    )
+                    "#,
+                    params![
+                        s.id,
+                        s.template_id,
+                        s.template_version_id,
+                        s.workout_id,
+                        s.exported_external_uuid,
+                        s.performed_at_ms,
+                        s.pool_length_m,
+                        if s.is_completed { 1 } else { 0 },
+                        s.notes,
+                        s.metrics.total_active_duration_ms,
+                        s.metrics.avg_duration_ms,
+                        s.metrics.best_rep_duration_ms,
+                        s.metrics.worst_rep_duration_ms,
+                        s.metrics.avg_pace_ms_per_100m,
+                        s.metrics.std_dev_ms,
+                        s.metrics.consistency_cv_pct,
+                        s.metrics.fatigue_index_pct,
+                        s.metrics.total_tonnage_kg,
+                        s.metrics.best_estimated_1rm_kg,
+                        s.metrics.best_attempt_m,
+                        s.created_at_ms
+                    ],
+                )?;
+
+                for r in &s.reps {
+                    let splits_json = serde_json::to_string(&r.splits_ms)?;
+                    tx.execute(
+                        r#"
+                        INSERT OR IGNORE INTO rep_records (
+                            id, session_id, slot_index, round_index, block_order,
+                            distance_m, duration_ms, pace_ms_per_100m, actual_rest_ms,
+                            stroke_count, swolf_score, rpe, weight_kg, reps_completed,
+                            attempt_result_m, splits_json, is_skipped, notes
+                        ) VALUES (
+                            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                            ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18
+                        )
+                        "#,
+                        params![
+                            r.id,
+                            r.session_id,
+                            r.slot_index,
+                            r.round_index,
+                            r.block_order,
+                            r.distance_m,
+                            r.duration_ms,
+                            r.pace_ms_per_100m,
+                            r.actual_rest_ms,
+                            r.stroke_count,
+                            r.swolf_score,
+                            r.rpe,
+                            r.weight_kg,
+                            r.reps_completed,
+                            r.attempt_result_m,
+                            splits_json,
+                            if r.is_skipped { 1 } else { 0 },
+                            r.notes
+                        ],
+                    )?;
+                }
+                sessions_restored += 1;
+            }
+        }
+
+        for h in &payload.health_snapshots {
+            tx.execute(
+                r#"
+                INSERT OR REPLACE INTO daily_health_snapshots (
+                    date_iso, sleep_duration_minutes, hrv_sdnn_ms,
+                    resting_hr_bpm, vo2_max_ml_kg_min, source_summary, captured_at_ms
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "#,
+                params![
+                    h.date_iso,
+                    h.sleep_duration_minutes,
+                    h.hrv_sdnn_ms,
+                    h.resting_hr_bpm,
+                    h.vo2_max_ml_kg_min,
+                    h.source_summary,
+                    h.captured_at_ms
+                ],
+            )?;
+            health_snapshots_restored += 1;
+        }
+
+        tx.commit()?;
+        Ok(RestoreBackupResult {
+            templates_restored,
+            workouts_restored,
+            sessions_restored,
+            health_snapshots_restored,
+        })
+    }
+
     /// Exports all logged sessions and repetitions as a flat CSV table for external analysis.
     pub fn export_sessions_csv(&self) -> Result<String, CoreError> {
         let sessions = self.list_all_sessions()?;
         let mut csv = String::from(
-            "session_id,date_iso,template_name,template_version,slot_index,round_index,distance_m,duration_ms,pace_ms_per_100m,actual_rest_ms,is_skipped\n",
+            "session_id,date_iso,template_name,template_version,slot_index,round_index,distance_m,duration_ms,pace_ms_per_100m,actual_rest_ms,stroke_count,swolf_score,weight_kg,reps_completed,attempt_result_m,is_skipped\n",
         );
 
         for s in sessions {
@@ -1189,7 +1758,7 @@ impl L4neDatabase {
             let safe_name = s.template_name.replace(',', " ");
             for r in s.reps {
                 csv.push_str(&format!(
-                    "{},{},{},v{},{},{},{},{},{},{},{}\n",
+                    "{},{},{},v{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
                     s.id,
                     date_iso,
                     safe_name,
@@ -1202,6 +1771,17 @@ impl L4neDatabase {
                         .map(|v| v.to_string())
                         .unwrap_or_default(),
                     r.actual_rest_ms.map(|v| v.to_string()).unwrap_or_default(),
+                    r.stroke_count.map(|v| v.to_string()).unwrap_or_default(),
+                    r.swolf_score.map(|v| v.to_string()).unwrap_or_default(),
+                    r.weight_kg
+                        .map(|v| format!("{v:.1}"))
+                        .unwrap_or_default(),
+                    r.reps_completed
+                        .map(|v| v.to_string())
+                        .unwrap_or_default(),
+                    r.attempt_result_m
+                        .map(|v| format!("{v:.2}"))
+                        .unwrap_or_default(),
                     r.is_skipped
                 ));
             }
@@ -1209,8 +1789,27 @@ impl L4neDatabase {
         Ok(csv)
     }
 
-    /// Seeds realistic Swimming & Finswimming templates, sessions, and Apple Health data
-    /// when the database is empty.
+    /// Returns diagnostic counts of all tables in the local SQLite database.
+    pub fn get_database_diagnostics(&self) -> Result<DatabaseDiagnostics, CoreError> {
+        let count_of = |table: &str| -> Result<i32, CoreError> {
+            Ok(self
+                .conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))?)
+        };
+        Ok(DatabaseDiagnostics {
+            engine_version: "1.2.0".to_string(),
+            schema_version: 3,
+            templates_count: count_of("templates")?,
+            template_versions_count: count_of("template_versions")?,
+            sessions_count: count_of("sessions")?,
+            rep_records_count: count_of("rep_records")?,
+            workouts_count: count_of("workouts")?,
+            health_snapshots_count: count_of("daily_health_snapshots")?,
+        })
+    }
+
+    /// Seeds realistic multi-sport templates (Finswimming, Swimming, Track, Gym), sessions,
+    /// and Apple Health data when the database is empty.
     pub fn seed_demo_data_if_empty(&mut self) -> Result<bool, CoreError> {
         let count: i32 = self
             .conn
@@ -1219,7 +1818,6 @@ impl L4neDatabase {
             return Ok(false);
         }
 
-        // Fixed deterministic timestamps (Nov 2026)
         let nov_15_2026_ms: i64 = 1_794_751_200_000; // 2026-11-15
         let nov_22_2026_ms: i64 = 1_795_356_000_000; // 2026-11-22
 
@@ -1230,6 +1828,7 @@ impl L4neDatabase {
                 sport_category: SportCategory::Finswimming,
                 pool_length_m: Some(50),
                 environment: EnvironmentType::Pool,
+                folder_tag: Some("Race Pace / Taper".to_string()),
                 rounds: 1,
                 round_rest_ms: 0,
                 equipment: vec!["monofin".to_string(), "snorkel".to_string()],
@@ -1255,6 +1854,7 @@ impl L4neDatabase {
                 sport_category: SportCategory::Finswimming,
                 pool_length_m: Some(50),
                 environment: EnvironmentType::Pool,
+                folder_tag: Some("Lactate Tolerance".to_string()),
                 rounds: 1,
                 round_rest_ms: 0,
                 equipment: vec!["bifins".to_string(), "snorkel".to_string()],
@@ -1318,6 +1918,7 @@ impl L4neDatabase {
                 sport_category: SportCategory::Swimming,
                 pool_length_m: Some(50),
                 environment: EnvironmentType::Pool,
+                folder_tag: Some("Aerobic Threshold".to_string()),
                 rounds: 4,
                 round_rest_ms: 30_000,
                 equipment: vec!["paddles".to_string()],
@@ -1347,7 +1948,7 @@ impl L4neDatabase {
             nov_15_2026_ms,
         )?;
 
-        // Seed Apple Watch Imported Workout on Nov 22, 2026
+        // Seed Apple Watch Imported Workout on Nov 22, 2026 (including recorded 50m lap events!)
         let apple_workout = self.import_workout(
             &ImportWorkoutInput {
                 sport_category: SportCategory::Swimming,
@@ -1356,12 +1957,15 @@ impl L4neDatabase {
                 external_source_name: Some("Apple Watch Ultra 2".to_string()),
                 started_at_ms: nov_22_2026_ms,
                 ended_at_ms: Some(nov_22_2026_ms + 2_538_000),
-                duration_ms: Some(2_538_000), // 42m 18s
+                duration_ms: Some(2_538_000),
                 total_distance_m: Some(2400.0),
                 pool_length_m: Some(50),
                 active_energy_kcal: Some(612.0),
                 avg_heart_rate_bpm: Some(154.0),
                 max_heart_rate_bpm: Some(182.0),
+                lap_durations_ms: vec![
+                    18_200, 18_350, 18_400, 18_300, 18_250, 18_300, 18_150, 17_950,
+                ],
                 notes: Some("Afternoon pool workout imported from Apple HealthKit.".to_string()),
             },
             nov_22_2026_ms,
@@ -1385,11 +1989,12 @@ impl L4neDatabase {
                     .map(|(i, &ms)| RepInput {
                         slot_index: (i + 1) as i32,
                         duration_ms: Some(ms),
-                        stroke_count: None,
+                        stroke_count: Some(14),
                         rpe: Some(8),
                         weight_kg: None,
                         reps_completed: None,
                         attempt_result_m: None,
+                        splits_ms: vec![],
                         is_skipped: false,
                         notes: None,
                     })
@@ -1416,11 +2021,12 @@ impl L4neDatabase {
                     .map(|(i, &ms)| RepInput {
                         slot_index: (i + 1) as i32,
                         duration_ms: Some(ms),
-                        stroke_count: None,
+                        stroke_count: Some(13),
                         rpe: Some(8),
                         weight_kg: None,
                         reps_completed: None,
                         attempt_result_m: None,
+                        splits_ms: vec![],
                         is_skipped: false,
                         notes: None,
                     })
@@ -1450,6 +2056,7 @@ impl L4neDatabase {
                         weight_kg: None,
                         reps_completed: None,
                         attempt_result_m: None,
+                        splits_ms: vec![],
                         is_skipped: false,
                         notes: None,
                     })
@@ -1478,6 +2085,7 @@ impl L4neDatabase {
                         weight_kg: None,
                         reps_completed: None,
                         attempt_result_m: None,
+                        splits_ms: vec![],
                         is_skipped: false,
                         notes: None,
                     })
@@ -1489,7 +2097,7 @@ impl L4neDatabase {
         // Seed Health Snapshots for Nov 15 & Nov 22
         self.upsert_health_snapshot(&DailyHealthSnapshot {
             date_iso: epoch_ms_to_date_iso(nov_15_2026_ms),
-            sleep_duration_minutes: Some(425), // 7h 05m
+            sleep_duration_minutes: Some(425),
             hrv_sdnn_ms: Some(58.4),
             resting_hr_bpm: Some(53.0),
             vo2_max_ml_kg_min: Some(61.2),
@@ -1499,7 +2107,7 @@ impl L4neDatabase {
 
         self.upsert_health_snapshot(&DailyHealthSnapshot {
             date_iso: epoch_ms_to_date_iso(nov_22_2026_ms),
-            sleep_duration_minutes: Some(490), // 8h 10m
+            sleep_duration_minutes: Some(490),
             hrv_sdnn_ms: Some(74.2),
             resting_hr_bpm: Some(48.0),
             vo2_max_ml_kg_min: Some(62.0),

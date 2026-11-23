@@ -1,8 +1,10 @@
 //! Deterministic Performance Analytics Engine (`l4ne_core::analytics`).
 //!
 //! 100% mathematical & deterministic calculations — zero AI, zero heuristics.
-//! Supports both homogeneous sets (e.g. `8 × 50m`) and compound/pyramid protocols
-//! (e.g. `50-100-150-100-50m` or `4 × [2×50m + 1×100m]`).
+//! Supports:
+//! - Homogeneous & Pyramid/Compound sets for Swimming, Finswimming, and Track (`timed_distance`)
+//! - Field Throws & Jumps (`distance_attempt`: best attempt, average, progression)
+//! - Gym Strength Training (`weight_reps`: total tonnage kg, Epley estimated 1RM kg, average RPE)
 
 use crate::models::{
     DailyHealthSnapshot, ExpectedRepSlot, RepRecord, RestMode, SessionComparison,
@@ -20,9 +22,29 @@ pub fn compute_pace_ms_per_100m(duration_ms: i64, distance_m: i32) -> Option<i64
     Some(((duration_ms * 100) + (d / 2)) / d)
 }
 
+/// Computes deterministic SWOLF score (`round(duration_sec) + stroke_count`).
+pub fn compute_swolf_score(duration_ms: Option<i64>, stroke_count: Option<i32>) -> Option<i32> {
+    match (duration_ms, stroke_count) {
+        (Some(dur), Some(strokes)) if dur > 0 && strokes > 0 => {
+            let secs = ((dur + 500) / 1000) as i32;
+            Some(secs + strokes)
+        }
+        _ => None,
+    }
+}
+
+/// Computes Epley Estimated 1-Rep Max (`weight * (1 + reps / 30.0)`).
+pub fn compute_epley_1rm_kg(weight_kg: f64, reps: i32) -> Option<f64> {
+    if weight_kg <= 0.0 || reps <= 0 {
+        return None;
+    }
+    if reps == 1 {
+        return Some(round2(weight_kg));
+    }
+    Some(round2(weight_kg * (1.0 + (reps as f64 / 30.0))))
+}
+
 /// Computes actual rest time in milliseconds for a repetition given the block's `RestMode`.
-/// - For `FixedRest(R)`: returns `R`.
-/// - For `SendOff(S)`: returns `max(0, S - duration_ms)`.
 pub fn compute_actual_rest_ms(
     rest_mode: RestMode,
     rest_or_sendoff_ms: i64,
@@ -39,18 +61,53 @@ fn round2(val: f64) -> f64 {
     (val * 100.0).round() / 100.0
 }
 
-/// Computes deterministic summary metrics for a session from its expanded slots and logged reps.
+/// Computes deterministic summary metrics for a session across Timed, Field, and Gym records.
 pub fn compute_session_metrics(
     _slots: &[ExpectedRepSlot],
     reps: &[RepRecord],
     is_homogeneous: bool,
 ) -> SessionSummaryMetrics {
-    let valid_reps: Vec<&RepRecord> = reps
+    let active_reps: Vec<&RepRecord> = reps.iter().filter(|r| !r.is_skipped).collect();
+
+    // Multi-sport v1.1: Gym tonnage & Epley 1RM
+    let mut tonnage_sum = 0.0f64;
+    let mut has_gym = false;
+    let mut best_1rm: Option<f64> = None;
+
+    // Multi-sport v1.1: Field best attempt (meters)
+    let mut best_attempt_m: Option<f64> = None;
+
+    for r in &active_reps {
+        if let (Some(w), Some(rc)) = (r.weight_kg, r.reps_completed) {
+            if w > 0.0 && rc > 0 {
+                has_gym = true;
+                tonnage_sum += w * (rc as f64);
+                if let Some(est) = compute_epley_1rm_kg(w, rc) {
+                    best_1rm = Some(best_1rm.map_or(est, |cur| cur.max(est)));
+                }
+            }
+        }
+        if let Some(att) = r.attempt_result_m {
+            if att > 0.0 {
+                let rounded = round2(att);
+                best_attempt_m = Some(best_attempt_m.map_or(rounded, |cur| cur.max(rounded)));
+            }
+        }
+    }
+
+    let total_tonnage_kg = if has_gym {
+        Some(round2(tonnage_sum))
+    } else {
+        None
+    };
+
+    let valid_timed_reps: Vec<&RepRecord> = active_reps
         .iter()
-        .filter(|r| !r.is_skipped && r.duration_ms.unwrap_or(0) > 0)
+        .copied()
+        .filter(|r| r.duration_ms.unwrap_or(0) > 0)
         .collect();
 
-    if valid_reps.is_empty() {
+    if valid_timed_reps.is_empty() {
         return SessionSummaryMetrics {
             total_active_duration_ms: 0,
             avg_duration_ms: None,
@@ -60,10 +117,13 @@ pub fn compute_session_metrics(
             std_dev_ms: None,
             consistency_cv_pct: None,
             fatigue_index_pct: None,
+            total_tonnage_kg,
+            best_estimated_1rm_kg: best_1rm,
+            best_attempt_m,
         };
     }
 
-    let durations: Vec<i64> = valid_reps
+    let durations: Vec<i64> = valid_timed_reps
         .iter()
         .filter_map(|r| r.duration_ms)
         .collect();
@@ -79,10 +139,9 @@ pub fn compute_session_metrics(
         (None, None, None)
     };
 
-    // Weighted average pace per 100m across all valid reps that have a distance
     let mut total_dist_m: i64 = 0;
     let mut total_timed_dist_ms: i64 = 0;
-    for r in &valid_reps {
+    for r in &valid_timed_reps {
         if let (Some(dur), Some(dist)) = (r.duration_ms, r.distance_m) {
             if dist > 0 {
                 total_dist_m += dist as i64;
@@ -97,13 +156,10 @@ pub fn compute_session_metrics(
         None
     };
 
-    // Standard deviation & Consistency CV%
-    // For homogeneous sets: use raw durations (ms).
-    // For compound/pyramid sets: use normalized pace per 100m (ms/100m).
     let series_for_dispersion: Vec<f64> = if is_homogeneous {
         durations.iter().map(|&d| d as f64).collect()
     } else {
-        valid_reps
+        valid_timed_reps
             .iter()
             .filter_map(|r| r.pace_ms_per_100m.map(|p| p as f64))
             .collect()
@@ -131,11 +187,10 @@ pub fn compute_session_metrics(
         (None, None)
     };
 
-    // Fatigue / Pace Degradation Index (% difference between 2nd half and 1st half)
-    let fatigue_index_pct = if valid_reps.len() >= 2 {
-        let half = valid_reps.len() / 2;
-        let first_half = &valid_reps[..half];
-        let second_half = &valid_reps[valid_reps.len() - half..];
+    let fatigue_index_pct = if valid_timed_reps.len() >= 2 {
+        let half = valid_timed_reps.len() / 2;
+        let first_half = &valid_timed_reps[..half];
+        let second_half = &valid_timed_reps[valid_timed_reps.len() - half..];
 
         let half_metric = |slice: &[&RepRecord]| -> Option<f64> {
             let mut d_sum = 0i64;
@@ -177,11 +232,13 @@ pub fn compute_session_metrics(
         std_dev_ms,
         consistency_cv_pct,
         fatigue_index_pct,
+        total_tonnage_kg,
+        best_estimated_1rm_kg: best_1rm,
+        best_attempt_m,
     }
 }
 
 /// Deterministically compares two sessions (`current` vs `baseline`).
-/// Enforces protocol version checks and computes both aggregate and slot-by-slot deltas.
 pub fn compare_sessions(
     current: &SessionWithReps,
     baseline: &SessionWithReps,
@@ -199,8 +256,28 @@ pub fn compare_sessions(
     let cur_total = current.metrics.total_active_duration_ms;
     let base_total = baseline.metrics.total_active_duration_ms;
     let total_duration_delta_ms = cur_total - base_total;
+
+    // For timed sports, lower duration = positive improvement.
+    // For Gym tonnage or Field attempts (when duration is 0), higher tonnage/attempt = positive improvement!
     let total_improvement_pct = if base_total > 0 {
         round2(((base_total - cur_total) as f64 / base_total as f64) * 100.0)
+    } else if let (Some(cur_ton), Some(base_ton)) = (
+        current.metrics.total_tonnage_kg,
+        baseline.metrics.total_tonnage_kg,
+    ) {
+        if base_ton > 0.0 {
+            round2(((cur_ton - base_ton) / base_ton) * 100.0)
+        } else {
+            0.0
+        }
+    } else if let (Some(cur_att), Some(base_att)) =
+        (current.metrics.best_attempt_m, baseline.metrics.best_attempt_m)
+    {
+        if base_att > 0.0 {
+            round2(((cur_att - base_att) / base_att) * 100.0)
+        } else {
+            0.0
+        }
     } else {
         0.0
     };
@@ -270,8 +347,7 @@ pub fn compare_sessions(
     }
 }
 
-/// Converts a UNIX epoch timestamp in milliseconds (`i64`) to a UTC `YYYY-MM-DD` date string
-/// using Howard Hinnant's civil_from_days deterministic algorithm.
+/// Converts a UNIX epoch timestamp in milliseconds (`i64`) to a UTC `YYYY-MM-DD` date string.
 pub fn epoch_ms_to_date_iso(epoch_ms: i64) -> String {
     let days = epoch_ms.div_euclid(86_400_000);
     let z = days + 719_468;
@@ -295,28 +371,48 @@ pub fn compute_template_analytics(
 ) -> TemplateAnalyticsReport {
     let compatible_sessions: Vec<&SessionWithReps> = sessions_chronological_desc
         .iter()
-        .filter(|s| {
-            s.protocol_hash == template.active_version.protocol_hash
-                && s.metrics.total_active_duration_ms > 0
-        })
+        .filter(|s| s.protocol_hash == template.active_version.protocol_hash)
         .collect();
 
-    // Personal Best session among compatible sessions (lowest pace per 100m, or lowest total active duration)
-    let pb_session = compatible_sessions.iter().copied().min_by_key(|s| {
-        s.metrics
-            .avg_pace_ms_per_100m
-            .unwrap_or(s.metrics.total_active_duration_ms)
-    });
+    let timed_compatible: Vec<&SessionWithReps> = compatible_sessions
+        .iter()
+        .copied()
+        .filter(|s| s.metrics.total_active_duration_ms > 0)
+        .collect();
 
-    // Fastest individual rep across all compatible sessions (when homogeneous)
+    let pb_session = if !timed_compatible.is_empty() {
+        timed_compatible.iter().copied().min_by_key(|s| {
+            s.metrics
+                .avg_pace_ms_per_100m
+                .unwrap_or(s.metrics.total_active_duration_ms)
+        })
+    } else {
+        compatible_sessions.first().copied()
+    };
+
     let personal_best_rep_duration_ms = if template.active_version.is_homogeneous {
-        compatible_sessions
+        timed_compatible
             .iter()
             .filter_map(|s| s.metrics.best_rep_duration_ms)
             .min()
     } else {
         None
     };
+
+    let personal_best_tonnage_kg = compatible_sessions
+        .iter()
+        .filter_map(|s| s.metrics.total_tonnage_kg)
+        .reduce(f64::max);
+
+    let personal_best_1rm_kg = compatible_sessions
+        .iter()
+        .filter_map(|s| s.metrics.best_estimated_1rm_kg)
+        .reduce(f64::max);
+
+    let personal_best_attempt_m = compatible_sessions
+        .iter()
+        .filter_map(|s| s.metrics.best_attempt_m)
+        .reduce(f64::max);
 
     let latest_vs_previous = if sessions_chronological_desc.len() >= 2 {
         Some(compare_sessions(
@@ -382,6 +478,9 @@ pub fn compute_template_analytics(
         personal_best_avg_duration_ms: pb_session.and_then(|s| s.metrics.avg_duration_ms),
         personal_best_rep_duration_ms,
         personal_best_pace_ms_per_100m: pb_session.and_then(|s| s.metrics.avg_pace_ms_per_100m),
+        personal_best_tonnage_kg,
+        personal_best_1rm_kg,
+        personal_best_attempt_m,
         latest_vs_previous,
         latest_vs_personal_best,
         health_correlations,

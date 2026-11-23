@@ -1,13 +1,14 @@
-//! Deterministic Template & Protocol Versioning Engine (`l4ne_core::engine`).
+//! Deterministic Template, Protocol Versioning & Live Poolside Timer Engine (`l4ne_core::engine`).
 //!
 //! Handles:
 //! 1. Slot expansion (`rounds × blocks`) for homogeneous sets, pyramids, and compound sets.
 //! 2. Canonical SHA-256 protocol hashing for historical integrity & version control.
 //! 3. Athletic Centisecond Numpad parsing (`"3240"` -> `32_400 ms` -> `"32.40"`).
+//! 4. Live Poolside Companion (v1.1) deterministic rest & send-off departure countdown clock.
 
 use crate::models::{
-    CoreError, EnvironmentType, ExpectedRepSlot, NumpadParseResult, SportCategory,
-    TemplateBlockInput,
+    CoreError, EnvironmentType, ExpectedRepSlot, LiveTimerTickInput, LiveTimerTickOutput,
+    NumpadParseResult, RestMode, SportCategory, TemplateBlockInput,
 };
 use sha2::{Digest, Sha256};
 
@@ -91,8 +92,6 @@ pub fn expand_template_slots(
 
 /// Determines whether all expanded slots in a protocol share identical distance, record_kind,
 /// and stroke/movement.
-/// - `true` for homogeneous sets (e.g. `8 × 50m surface`).
-/// - `false` for pyramids (e.g. `50-100-150-100-50m`) or multi-stroke compound sets.
 pub fn is_homogeneous_protocol(slots: &[ExpectedRepSlot]) -> bool {
     let Some(first) = slots.first() else {
         return true;
@@ -124,8 +123,6 @@ pub fn compute_total_distance_m(slots: &[ExpectedRepSlot]) -> Option<i32> {
 }
 
 /// Computes a deterministic SHA-256 fingerprint of a template's physiological protocol.
-/// Any change to distance, repetitions, rounds, rest mode/duration, stroke, pool length,
-/// or equipment produces a distinct hash, triggering a new `TemplateVersion`.
 pub fn compute_protocol_hash(
     sport_category: SportCategory,
     pool_length_m: Option<i32>,
@@ -173,16 +170,6 @@ pub fn compute_protocol_hash(
 }
 
 /// Parses a sequence of digits entered on the Athletic Centisecond Numpad into integer milliseconds.
-///
-/// Format rules (right-to-left positional centisecond encoding: `MMSScc` or `SScc`):
-/// - Last 2 digits (`cc`): centiseconds (`00..=99`), each centisecond = `10 ms`.
-/// - Next 2 digits (`SS`): seconds (`00..=59`, or up to `99` when <= 4 digits total).
-/// - Remaining leading digits (`M` or `MM`): minutes.
-///
-/// Examples:
-/// - `"3240"` -> `32s 40cs` = `32_400 ms` (`"32.40"`)
-/// - `"10855"` -> `1m 08s 55cs` = `68_550 ms` (`"1:08.55"`)
-/// - `"298"` -> `2s 98cs` = `2_980 ms` (`"2.98"`)
 pub fn parse_athletic_numpad(raw_input: &str) -> Result<NumpadParseResult, CoreError> {
     let digits: String = raw_input
         .chars()
@@ -243,7 +230,7 @@ pub fn parse_athletic_numpad(raw_input: &str) -> Result<NumpadParseResult, CoreE
 pub fn format_duration_ms(duration_ms: i64) -> String {
     let sign = if duration_ms < 0 { "-" } else { "" };
     let abs_ms = duration_ms.abs();
-    let total_centiseconds = (abs_ms + 5) / 10; // nearest centisecond
+    let total_centiseconds = (abs_ms + 5) / 10;
     let centiseconds = total_centiseconds % 100;
     let total_seconds = total_centiseconds / 100;
     let minutes = total_seconds / 60;
@@ -253,5 +240,68 @@ pub fn format_duration_ms(duration_ms: i64) -> String {
         format!("{sign}{minutes}:{seconds:02}.{centiseconds:02}")
     } else {
         format!("{sign}{seconds}.{centiseconds:02}")
+    }
+}
+
+/// Evaluates the Live Poolside Companion (v1.1) state deterministically for any tick.
+///
+/// - When `rest_elapsed_ms` is `None`: the athlete is currently swimming (`phase = "swimming"`).
+///   In `SendOff` mode, if `rep_elapsed_ms > rest_or_sendoff_ms`, flags `"sendoff_overrun"`.
+/// - When `rest_elapsed_ms` is `Some(rest_elapsed)`: the athlete has finished the rep and is resting on the wall:
+///   - In `FixedRest(R)`: total rest budget is `R`. Remaining rest = `max(0, R - rest_elapsed)`.
+///   - In `SendOff(S)`: total rest budget earned is `max(0, S - rep_elapsed_ms)`.
+///     Remaining rest = `max(0, (S - rep_elapsed_ms) - rest_elapsed)`.
+///   - Generates exact departure cues (`ten_sec_warning`, `five_sec_warning`, `countdown_3_2_1`, `depart_now`).
+pub fn evaluate_live_timer_tick(input: &LiveTimerTickInput) -> LiveTimerTickOutput {
+    let rep_ms = input.rep_elapsed_ms.max(0);
+    let formatted_rep_time = format_duration_ms(rep_ms);
+
+    let Some(rest_elapsed) = input.rest_elapsed_ms else {
+        let total_rest_budget = match input.rest_mode {
+            RestMode::FixedRest => input.rest_or_sendoff_ms.max(0),
+            RestMode::SendOff => (input.rest_or_sendoff_ms - rep_ms).max(0),
+        };
+        let phase = if input.rest_mode == RestMode::SendOff && rep_ms > input.rest_or_sendoff_ms {
+            "sendoff_overrun".to_string()
+        } else {
+            "swimming".to_string()
+        };
+        return LiveTimerTickOutput {
+            phase,
+            formatted_rep_time,
+            remaining_rest_ms: total_rest_budget,
+            formatted_remaining_rest: format_duration_ms(total_rest_budget),
+            audio_cue: "none".to_string(),
+            should_auto_advance: false,
+        };
+    };
+
+    let earned_rest_ms = match input.rest_mode {
+        RestMode::FixedRest => input.rest_or_sendoff_ms.max(0),
+        RestMode::SendOff => (input.rest_or_sendoff_ms - rep_ms).max(0),
+    };
+
+    let remaining_rest_ms = (earned_rest_ms - rest_elapsed.max(0)).max(0);
+    let formatted_remaining_rest = format_duration_ms(remaining_rest_ms);
+
+    let (phase, audio_cue, should_auto_advance) = if remaining_rest_ms == 0 {
+        ("ready_to_depart".to_string(), "depart_now".to_string(), true)
+    } else if remaining_rest_ms <= 3_000 {
+        ("resting".to_string(), "countdown_3_2_1".to_string(), false)
+    } else if remaining_rest_ms <= 5_000 {
+        ("resting".to_string(), "five_sec_warning".to_string(), false)
+    } else if remaining_rest_ms <= 10_000 {
+        ("resting".to_string(), "ten_sec_warning".to_string(), false)
+    } else {
+        ("resting".to_string(), "none".to_string(), false)
+    };
+
+    LiveTimerTickOutput {
+        phase,
+        formatted_rep_time,
+        remaining_rest_ms,
+        formatted_remaining_rest,
+        audio_cue,
+        should_auto_advance,
     }
 }

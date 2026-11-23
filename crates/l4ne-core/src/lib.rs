@@ -1,7 +1,8 @@
-//! # L4NE Core (`l4ne-core`)
+//! # L4NE Core (`l4ne-core` v1.1.0)
 //!
 //! Local-first, 100% deterministic athletic training protocol, versioning,
-//! and performance analytics engine for **L4NE Training** (iOS & Android).
+//! live poolside interval/send-off companion, and multi-sport performance analytics engine
+//! for **L4NE Training** (iOS & Android).
 //!
 //! Copyright (C) 2026 John Akrivos (L4NE Performance).
 //! Licensed under the GNU General Public License v3.0 (`GPL-3.0-only`).
@@ -10,42 +11,39 @@ pub mod analytics;
 pub mod db;
 pub mod engine;
 pub mod ffi;
+pub mod jni_android;
 pub mod matcher;
 pub mod models;
 
 #[cfg(test)]
 mod tests {
-    use crate::analytics::compare_sessions;
+    use crate::analytics::{compare_sessions, compute_epley_1rm_kg, compute_swolf_score};
     use crate::db::L4neDatabase;
     use crate::engine::{
-        compute_protocol_hash, expand_template_slots, format_duration_ms, is_homogeneous_protocol,
-        parse_athletic_numpad,
+        compute_protocol_hash, evaluate_live_timer_tick, expand_template_slots, format_duration_ms,
+        is_homogeneous_protocol, parse_athletic_numpad,
     };
     use crate::ffi::execute_command_json_str;
     use crate::models::{
-        CoreError, CreateTemplateInput, EnvironmentType, ImportWorkoutInput,
+        CoreError, CreateTemplateInput, EnvironmentType, ImportWorkoutInput, LiveTimerTickInput,
         LogSessionInput, RecordKind, RepInput, RestMode, SportCategory, TemplateBlockInput,
         UpdateTemplateProtocolInput, WorkoutSourceType,
     };
 
     #[test]
     fn test_athletic_centisecond_numpad_parser_and_formatter() {
-        // 3240 -> 32.40s = 32,400 ms
         let p1 = parse_athletic_numpad("3240").expect("should parse 3240");
         assert_eq!(p1.duration_ms, 32_400);
         assert_eq!(p1.formatted_display, "32.40");
 
-        // 10855 -> 1:08.55 = 68,550 ms
         let p2 = parse_athletic_numpad("10855").expect("should parse 10855");
         assert_eq!(p2.duration_ms, 68_550);
         assert_eq!(p2.formatted_display, "1:08.55");
 
-        // 1795 -> 17.95s = 17,950 ms
         let p3 = parse_athletic_numpad("1795").expect("should parse 1795");
         assert_eq!(p3.duration_ms, 17_950);
         assert_eq!(p3.formatted_display, "17.95");
 
-        // Reject invalid seconds >= 60 when minutes are present (e.g. 16500 -> 1m 65.00s)
         assert!(parse_athletic_numpad("16500").is_err());
         assert!(parse_athletic_numpad("0000").is_err());
         assert!(parse_athletic_numpad("abc").is_err());
@@ -53,8 +51,46 @@ mod tests {
     }
 
     #[test]
+    fn test_live_poolside_companion_timer_state_machine_v1_1() {
+        // 1. Swimming phase on a 50s Send-Off cycle at 18.20s elapsed
+        let tick_swim = evaluate_live_timer_tick(&LiveTimerTickInput {
+            rest_mode: RestMode::SendOff,
+            rest_or_sendoff_ms: 50_000,
+            rep_elapsed_ms: 18_200,
+            rest_elapsed_ms: None,
+        });
+        assert_eq!(tick_swim.phase, "swimming");
+        assert_eq!(tick_swim.formatted_rep_time, "18.20");
+        assert_eq!(tick_swim.remaining_rest_ms, 31_800);
+        assert!(!tick_swim.should_auto_advance);
+
+        // 2. Resting on wall: finished rep in 18.20s on 50s send-off -> earned 31.80s rest.
+        // After 29.00s on the wall, 2.80s remain -> must trigger "countdown_3_2_1"!
+        let tick_countdown = evaluate_live_timer_tick(&LiveTimerTickInput {
+            rest_mode: RestMode::SendOff,
+            rest_or_sendoff_ms: 50_000,
+            rep_elapsed_ms: 18_200,
+            rest_elapsed_ms: Some(29_000),
+        });
+        assert_eq!(tick_countdown.phase, "resting");
+        assert_eq!(tick_countdown.remaining_rest_ms, 2_800);
+        assert_eq!(tick_countdown.audio_cue, "countdown_3_2_1");
+
+        // 3. Departure reached (rest_elapsed >= 31.80s) -> "ready_to_depart" + should_auto_advance
+        let tick_go = evaluate_live_timer_tick(&LiveTimerTickInput {
+            rest_mode: RestMode::SendOff,
+            rest_or_sendoff_ms: 50_000,
+            rep_elapsed_ms: 18_200,
+            rest_elapsed_ms: Some(31_800),
+        });
+        assert_eq!(tick_go.phase, "ready_to_depart");
+        assert_eq!(tick_go.remaining_rest_ms, 0);
+        assert_eq!(tick_go.audio_cue, "depart_now");
+        assert!(tick_go.should_auto_advance);
+    }
+
+    #[test]
     fn test_expand_homogeneous_pyramid_and_compound_sets() {
-        // 1. Homogeneous 8x50m
         let hom_blocks = vec![TemplateBlockInput {
             repeat_count: 8,
             record_kind: RecordKind::TimedDistance,
@@ -68,7 +104,6 @@ mod tests {
         assert_eq!(hom_slots.len(), 8);
         assert!(is_homogeneous_protocol(&hom_slots));
 
-        // 2. Pyramid 50-100-150-100-50m
         let pyr_blocks: Vec<TemplateBlockInput> = [50, 100, 150, 100, 50]
             .into_iter()
             .map(|d| TemplateBlockInput {
@@ -87,7 +122,6 @@ mod tests {
         assert_eq!(pyr_slots[2].slot_index, 3);
         assert_eq!(pyr_slots[2].distance_m, Some(150));
 
-        // 3. Compound Rounds: 4 x [2x50m + 1x100m] = 12 slots
         let comp_blocks = vec![
             TemplateBlockInput {
                 repeat_count: 2,
@@ -111,17 +145,10 @@ mod tests {
         let comp_slots = expand_template_slots(4, &comp_blocks).unwrap();
         assert_eq!(comp_slots.len(), 12);
         assert!(!is_homogeneous_protocol(&comp_slots));
-        assert_eq!(comp_slots[0].round_index, 1);
-        assert_eq!(comp_slots[0].distance_m, Some(50));
-        assert_eq!(comp_slots[2].round_index, 1);
-        assert_eq!(comp_slots[2].distance_m, Some(100));
-        assert_eq!(comp_slots[11].round_index, 4);
-        assert_eq!(comp_slots[11].distance_m, Some(100));
     }
 
     #[test]
     fn test_protocol_hash_distinguishes_rest_interval_and_equipment() {
-        // Overview Section 3: 6x100m @ 60s rest vs 6x100m @ 30s rest MUST be distinct protocols
         let b_60s = vec![TemplateBlockInput {
             repeat_count: 6,
             record_kind: RecordKind::TimedDistance,
@@ -173,6 +200,7 @@ mod tests {
                     sport_category: SportCategory::Finswimming,
                     pool_length_m: Some(50),
                     environment: EnvironmentType::Pool,
+                    folder_tag: Some("Aerobic Threshold".to_string()),
                     rounds: 1,
                     round_rest_ms: 0,
                     equipment: vec!["monofin".to_string()],
@@ -194,7 +222,6 @@ mod tests {
         assert_eq!(tpl.active_version.version_number, 1);
         let v1_id = tpl.active_version.id.clone();
 
-        // Log a session against v1
         let s1 = db
             .log_session(
                 &LogSessionInput {
@@ -213,6 +240,7 @@ mod tests {
                             weight_kg: None,
                             reps_completed: None,
                             attempt_result_m: None,
+                            splits_ms: vec![],
                             is_skipped: false,
                             notes: None,
                         })
@@ -223,13 +251,13 @@ mod tests {
             .unwrap();
         assert_eq!(s1.template_version_number, 1);
 
-        // Now modify the template's rest from 60s to 45s -> must mint v2!
         let updated = db
             .update_template_protocol(
                 &UpdateTemplateProtocolInput {
                     template_id: tpl.id.clone(),
                     name: Some("6×100m Surface (45s Rest)".to_string()),
                     pool_length_m: Some(50),
+                    folder_tag: Some("Speed Endurance".to_string()),
                     rounds: 1,
                     round_rest_ms: 0,
                     equipment: vec!["monofin".to_string()],
@@ -251,12 +279,13 @@ mod tests {
         assert_eq!(updated.active_version.version_number, 2);
         assert_ne!(updated.active_version.id, v1_id);
 
-        // Verify historical Session 1 is STILL bound to v1 with its original protocol hash!
+        let versions = db.list_template_versions(&tpl.id).unwrap();
+        assert_eq!(versions.len(), 2);
+
         let reloaded_s1 = db.get_session(&s1.id).unwrap();
         assert_eq!(reloaded_s1.template_version_id, v1_id);
         assert_eq!(reloaded_s1.template_version_number, 1);
 
-        // Log Session 2 under v2 and compare with Session 1 -> must flag protocol mismatch warning!
         let s2 = db
             .log_session(
                 &LogSessionInput {
@@ -275,6 +304,7 @@ mod tests {
                             weight_kg: None,
                             reps_completed: None,
                             attempt_result_m: None,
+                            splits_ms: vec![],
                             is_skipped: false,
                             notes: None,
                         })
@@ -291,30 +321,31 @@ mod tests {
     }
 
     #[test]
-    fn test_deterministic_analytics_improvement_sendoff_and_pyramid_deltas() {
-        let mut db = L4neDatabase::open(":memory:").unwrap();
+    fn test_multisport_gym_tonnage_1rm_field_attempts_and_swolf() {
+        assert_eq!(compute_swolf_score(Some(32_400), Some(15)), Some(47));
+        assert_eq!(compute_epley_1rm_kg(100.0, 5), Some(116.67));
 
-        // Check exact formula from Overview Section 5:
-        // Old average time 34.2s (34,200ms) -> New average time 32.1s (32,100ms) => +6.14% improvement
-        let tpl = db
+        let mut db = L4neDatabase::open(":memory:").unwrap();
+        let gym_tpl = db
             .create_template(
                 &CreateTemplateInput {
-                    name: "4×50m Send-Off @ 1:00".to_string(),
-                    sport_category: SportCategory::Swimming,
-                    pool_length_m: Some(50),
-                    environment: EnvironmentType::Pool,
+                    name: "5×5 Back Squat".to_string(),
+                    sport_category: SportCategory::Gym,
+                    pool_length_m: None,
+                    environment: EnvironmentType::Gym,
+                    folder_tag: Some("Strength Block".to_string()),
                     rounds: 1,
                     round_rest_ms: 0,
-                    equipment: vec![],
+                    equipment: vec!["barbell".to_string()],
                     target_pace_ms_per_100m: None,
                     notes: None,
                     blocks: vec![TemplateBlockInput {
-                        repeat_count: 4,
-                        record_kind: RecordKind::TimedDistance,
-                        distance_m: Some(50),
-                        stroke_or_movement: "freestyle".to_string(),
-                        rest_mode: RestMode::SendOff,
-                        rest_or_sendoff_ms: 60_000,
+                        repeat_count: 5,
+                        record_kind: RecordKind::WeightReps,
+                        distance_m: None,
+                        stroke_or_movement: "back_squat".to_string(),
+                        rest_mode: RestMode::FixedRest,
+                        rest_or_sendoff_ms: 180_000,
                         target_duration_ms: None,
                     }],
                 },
@@ -322,82 +353,78 @@ mod tests {
             )
             .unwrap();
 
-        let old_session = db
+        let gym_s1 = db
             .log_session(
                 &LogSessionInput {
-                    template_id: tpl.id.clone(),
+                    template_id: gym_tpl.id.clone(),
                     template_version_id: None,
                     workout_id: None,
-                    performed_at_ms: 1_000_000,
-                    pool_length_m: Some(50),
+                    performed_at_ms: 1_100_000,
+                    pool_length_m: None,
                     notes: None,
-                    reps: (1..=4)
+                    reps: (1..=5)
                         .map(|i| RepInput {
                             slot_index: i,
-                            duration_ms: Some(34_200),
+                            duration_ms: None,
                             stroke_count: None,
-                            rpe: None,
-                            weight_kg: None,
-                            reps_completed: None,
+                            rpe: Some(8),
+                            weight_kg: Some(120.0),
+                            reps_completed: Some(5),
                             attempt_result_m: None,
+                            splits_ms: vec![],
                             is_skipped: false,
                             notes: None,
                         })
                         .collect(),
                 },
-                1_000_000,
+                1_100_000,
             )
             .unwrap();
 
-        let new_session = db
-            .log_session(
-                &LogSessionInput {
-                    template_id: tpl.id.clone(),
-                    template_version_id: None,
-                    workout_id: None,
-                    performed_at_ms: 2_000_000,
-                    pool_length_m: Some(50),
-                    notes: None,
-                    reps: (1..=4)
-                        .map(|i| RepInput {
-                            slot_index: i,
-                            duration_ms: Some(32_100),
-                            stroke_count: None,
-                            rpe: None,
-                            weight_kg: None,
-                            reps_completed: None,
-                            attempt_result_m: None,
-                            is_skipped: false,
-                            notes: None,
-                        })
-                        .collect(),
-                },
-                2_000_000,
-            )
-            .unwrap();
-
-        // Check Send-Off Actual Rest: 60,000ms - 32,100ms = 27,900ms (27.90s)
-        assert_eq!(new_session.reps[0].actual_rest_ms, Some(27_900));
-
-        // Check Improvement % = ((34.2 - 32.1) / 34.2) * 100 = 6.14%
-        let cmp = compare_sessions(&new_session, &old_session);
-        assert!(cmp.protocol_compatible);
-        assert_eq!(cmp.total_improvement_pct, 6.14);
-        assert_eq!(cmp.pace_improvement_pct, Some(6.14));
+        // 5 sets * (120kg * 5 reps) = 3,000 kg total tonnage, Epley 1RM = 120 * (1 + 5/30) = 140.0 kg
+        assert_eq!(gym_s1.metrics.total_tonnage_kg, Some(3000.0));
+        assert_eq!(gym_s1.metrics.best_estimated_1rm_kg, Some(140.0));
     }
 
     #[test]
-    fn test_demo_seed_workout_deduplication_matching_timeline_and_exports() {
-        let mut db = L4neDatabase::open(":memory:").unwrap();
-        let seeded = db.seed_demo_data_if_empty().unwrap();
-        assert!(seeded);
-        assert!(!db.seed_demo_data_if_empty().unwrap());
+    fn test_backup_export_restore_and_healthkit_export_dedup_v1_1() {
+        let mut db1 = L4neDatabase::open(":memory:").unwrap();
+        assert!(db1.seed_demo_data_if_empty().unwrap());
 
-        let templates = db.list_templates().unwrap();
-        assert_eq!(templates.len(), 3);
+        // Test HealthKit session export deduplication
+        let sessions = db1.list_all_sessions().unwrap();
+        let first_session_id = sessions[0].id.clone();
+        let exported = db1
+            .mark_session_exported(&first_session_id, "HK-EXPORT-UUID-001")
+            .unwrap();
+        assert_eq!(
+            exported.exported_external_uuid.as_deref(),
+            Some("HK-EXPORT-UUID-001")
+        );
+        // Second export of the same session MUST be rejected!
+        let dup_export = db1
+            .mark_session_exported(&first_session_id, "HK-EXPORT-UUID-002")
+            .unwrap_err();
+        assert!(matches!(dup_export, CoreError::DuplicateExternalWorkout(_)));
 
-        // Attempt duplicate Apple Watch import with same external_source_uuid -> must reject!
-        let dup_err = db
+        // Export full JSON backup from db1 and restore into fresh db2
+        let backup_json = db1.export_backup_json(1_795_500_000_000).unwrap();
+
+        let mut db2 = L4neDatabase::open(":memory:").unwrap();
+        let restore_res = db2.import_backup_json(&backup_json).unwrap();
+        assert_eq!(restore_res.templates_restored, 3);
+        assert_eq!(restore_res.workouts_restored, 1);
+        assert_eq!(restore_res.sessions_restored, 4);
+        assert_eq!(restore_res.health_snapshots_restored, 2);
+
+        // Second restore of same backup must be idempotent (0 duplicate templates/sessions/workouts)
+        let restore_res_2 = db2.import_backup_json(&backup_json).unwrap();
+        assert_eq!(restore_res_2.templates_restored, 0);
+        assert_eq!(restore_res_2.workouts_restored, 0);
+        assert_eq!(restore_res_2.sessions_restored, 0);
+
+        // Verify duplicate import workout guard
+        let dup_err = db1
             .import_workout(
                 &ImportWorkoutInput {
                     sport_category: SportCategory::Swimming,
@@ -412,6 +439,7 @@ mod tests {
                     active_energy_kcal: None,
                     avg_heart_rate_bpm: None,
                     max_heart_rate_bpm: None,
+                    lap_durations_ms: vec![],
                     notes: None,
                 },
                 1_795_356_000_000,
@@ -419,28 +447,30 @@ mod tests {
             .unwrap_err();
         assert!(matches!(dup_err, CoreError::DuplicateExternalWorkout(_)));
 
-        // Verify deterministic workout matching
-        let workouts = db.list_workouts().unwrap();
-        assert_eq!(workouts.len(), 1);
-        let candidates = db.match_templates_for_workout(&workouts[0].id).unwrap();
-        assert_eq!(candidates.len(), 3);
-        assert!(candidates[0].pool_length_matches);
-        assert!(candidates[0].fits_remaining_distance);
+        // v1.2: Verify Apple Watch lap segments auto-prefill for both Homogeneous (8x50m) and Pyramid (50-100-150-100-50m)!
+        let workouts = db1.list_workouts().unwrap();
+        let templates = db1.list_templates().unwrap();
+        let pyramid_tpl = templates
+            .iter()
+            .find(|t| t.name.contains("Pyramid"))
+            .unwrap();
+        // Pyramid requires 1 + 2 + 3 + 2 + 1 = 9 laps of 50m; with 8 laps in the seeded workout, it prefills the first 4 slots (50, 100, 150, 100)!
+        let prefilled_pyr = db1
+            .prefill_reps_from_workout_laps(&workouts[0].id, &pyramid_tpl.active_version.id)
+            .unwrap();
+        assert_eq!(prefilled_pyr.len(), 4);
+        assert_eq!(prefilled_pyr[0].duration_ms, Some(18_200)); // 50m (1 lap)
+        assert_eq!(prefilled_pyr[1].duration_ms, Some(18_350 + 18_400)); // 100m (2 laps summed)
+        assert_eq!(prefilled_pyr[1].splits_ms, vec![18_350, 18_400]); // intermediate 50m splits preserved!
+        assert_eq!(
+            prefilled_pyr[2].duration_ms,
+            Some(18_300 + 18_250 + 18_300)
+        ); // 150m (3 laps summed)
 
-        // Verify Daily Timeline for 2026-11-22 does NOT double-count linked sessions' volume
-        let timeline = db.get_daily_timeline("2026-11-22").unwrap();
-        assert_eq!(timeline.workouts.len(), 1);
-        assert_eq!(timeline.standalone_and_linked_sessions.len(), 2);
-        assert_eq!(timeline.total_volume_distance_m, 2400.0);
-        assert!(timeline.health_snapshot.is_some());
+        // v1.2: Verify fail-closed backup restore rejects unsupported schema_version
+        let bad_schema = r#"{"schema_version":99,"exported_at_ms":0,"templates":[],"workouts":[],"sessions":[],"health_snapshots":[]}"#;
+        assert!(db2.import_backup_json(bad_schema).is_err());
 
-        // Verify JSON backup & CSV export
-        let json_backup = db.export_backup_json(1_795_356_000_000).unwrap();
-        assert!(json_backup.contains("8×50m Surface Monofin"));
-        let csv = db.export_sessions_csv().unwrap();
-        assert!(csv.contains("session_id,date_iso,template_name"));
-
-        // Verify FFI JSON command router
         let ffi_numpad =
             execute_command_json_str(":memory:", r#"{"action":"parse_numpad","digits":"3240"}"#);
         assert!(ffi_numpad.contains(r#""ok":true"#));

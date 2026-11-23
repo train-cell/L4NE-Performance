@@ -4,20 +4,24 @@ import SwiftUI
 import L4NETrainingCore
 #endif
 
-/// Main Observable ViewModel coordinating local SQLite state through `L4NECoreClient`.
+/// Main Observable ViewModel (v1.1) coordinating local SQLite state through `L4NECoreClient`.
 @MainActor
 public final class L4NEAppStore: ObservableObject {
     public let client: L4NECoreClient
     public let healthKitAdapter = L4NEHealthKitAdapter()
 
     @Published public var templates: [TemplateWithVersion] = []
+    @Published public var includeArchivedTemplates: Bool = false
+    @Published public var selectedSportFilter: SportCategory? = nil
     @Published public var recentSessions: [SessionWithReps] = []
     @Published public var workouts: [Workout] = []
     @Published public var healthSnapshots: [DailyHealthSnapshot] = []
     @Published public var selectedTimelineDateIso: String = "2026-11-22"
     @Published public var currentTimeline: DailyTrainingTimeline?
+    @Published public var diagnostics: DatabaseDiagnostics?
     @Published public var healthKitStatus: L4NEHealthKitStatus = .availableNotRequested
     @Published public var lastErrorMessage: String?
+    @Published public var lastStatusBanner: String?
     @Published public var lastExportPreview: String?
 
     public init(databasePath: String? = nil) {
@@ -27,10 +31,15 @@ public final class L4NEAppStore: ObservableObject {
         } else {
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
                 ?? URL(fileURLWithPath: NSTemporaryDirectory())
-            resolvedPath = docs.appendingPathComponent("l4ne_training_v1.sqlite").path
+            resolvedPath = docs.appendingPathComponent("l4ne_training_v1_1.sqlite").path
         }
         self.client = L4NECoreClient(databasePath: resolvedPath)
         self.bootstrap()
+    }
+
+    public var filteredTemplates: [TemplateWithVersion] {
+        guard let filter = selectedSportFilter else { return templates }
+        return templates.filter { $0.sportCategory == filter }
     }
 
     public func bootstrap() {
@@ -44,11 +53,12 @@ public final class L4NEAppStore: ObservableObject {
 
     public func refreshAll() {
         do {
-            templates = try client.listTemplates()
+            templates = try client.listTemplates(includeArchived: includeArchivedTemplates)
             recentSessions = try client.listSessions(templateId: nil)
             workouts = try client.listWorkouts()
             healthSnapshots = try client.listHealthSnapshots()
             currentTimeline = try client.getDailyTimeline(dateIso: selectedTimelineDateIso)
+            diagnostics = try client.getDatabaseDiagnostics()
             lastErrorMessage = nil
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -57,7 +67,33 @@ public final class L4NEAppStore: ObservableObject {
 
     public func createTemplate(_ input: CreateTemplateInput) {
         do {
-            _ = try client.createTemplate(input)
+            let created = try client.createTemplate(input)
+            lastStatusBanner = "Δημιουργήθηκε το template '\(created.name)' (v\(created.activeVersion.versionNumber))."
+            refreshAll()
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func updateTemplateProtocol(_ input: UpdateTemplateProtocolInput) {
+        do {
+            let updated = try client.updateTemplateProtocol(input)
+            lastStatusBanner = "Ενημερώθηκε το '\(updated.name)' → ενεργή έκδοση v\(updated.activeVersion.versionNumber)."
+            refreshAll()
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func toggleTemplateArchived(_ template: TemplateWithVersion) {
+        do {
+            let updated = try client.setTemplateArchived(
+                templateId: template.id,
+                isArchived: !template.isArchived
+            )
+            lastStatusBanner = updated.isArchived
+                ? "Αρχειοθετήθηκε το '\(updated.name)'."
+                : "Επαναφέρθηκε το '\(updated.name)'."
             refreshAll()
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -66,7 +102,54 @@ public final class L4NEAppStore: ObservableObject {
 
     public func logSession(_ input: LogSessionInput) {
         do {
-            _ = try client.logSession(input)
+            let logged = try client.logSession(input)
+            lastStatusBanner = "Καταγράφηκε session για '\(logged.templateName)' (\(logged.reps.count) reps)."
+            refreshAll()
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func deleteSession(sessionId: String) {
+        do {
+            _ = try client.deleteSession(sessionId: sessionId)
+            lastStatusBanner = "Το session διαγράφηκε."
+            refreshAll()
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func linkSessionToWorkout(sessionId: String, workoutId: String?) {
+        do {
+            _ = try client.linkSessionToWorkout(sessionId: sessionId, workoutId: workoutId)
+            lastStatusBanner = workoutId != nil
+                ? "Το session συνδέθηκε με το Workout."
+                : "Αφαιρέθηκε η σύνδεση με το Workout."
+            refreshAll()
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func exportSessionToAppleHealth(session: SessionWithReps, sport: SportCategory) async {
+        do {
+            let updated = try await healthKitAdapter.exportSessionToHealthKit(
+                session: session,
+                sportCategory: sport,
+                client: client
+            )
+            lastStatusBanner = "Εξήχθη στο Apple HealthKit (\(updated.exportedExternalUuid ?? "HKWorkout"))."
+            refreshAll()
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func saveHealthSnapshot(_ snapshot: DailyHealthSnapshot) {
+        do {
+            _ = try client.upsertHealthSnapshot(snapshot)
+            lastStatusBanner = "Αποθηκεύτηκε το Health Snapshot (\(snapshot.dateIso))."
             refreshAll()
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -79,6 +162,7 @@ public final class L4NEAppStore: ObservableObject {
                 startedAtMs: Int64(Date().timeIntervalSince1970 * 1000)
             )
             _ = try client.importWorkout(sample)
+            lastStatusBanner = "Εισήχθη προπόνηση Apple Watch Ultra 2 (2.800m · 50m Pool)."
             refreshAll()
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -87,7 +171,19 @@ public final class L4NEAppStore: ObservableObject {
 
     public func exportJSONBackup() {
         do {
-            lastExportPreview = try client.exportBackupJSON()
+            let json = try client.exportBackupJSON()
+            lastExportPreview = json
+            lastStatusBanner = "Εξήχθη πλήρες JSON Backup (\(json.count) bytes)."
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func restoreJSONBackup(_ jsonString: String) {
+        do {
+            let res = try client.importBackupJSON(jsonString)
+            lastStatusBanner = "Restore ολοκληρώθηκε: +\(res.templatesRestored) templates, +\(res.sessionsRestored) sessions, +\(res.workoutsRestored) workouts."
+            refreshAll()
         } catch {
             lastErrorMessage = error.localizedDescription
         }
@@ -95,7 +191,9 @@ public final class L4NEAppStore: ObservableObject {
 
     public func exportCSV() {
         do {
-            lastExportPreview = try client.exportSessionsCSV()
+            let csv = try client.exportSessionsCSV()
+            lastExportPreview = csv
+            lastStatusBanner = "Εξήχθη αρχείο CSV όλων των επαναλήψεων."
         } catch {
             lastErrorMessage = error.localizedDescription
         }

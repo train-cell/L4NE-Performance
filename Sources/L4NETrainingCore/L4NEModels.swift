@@ -18,6 +18,29 @@ public enum SportCategory: String, Codable, CaseIterable, Sendable {
         case .gym: return "Γυμναστήριο (Gym)"
         }
     }
+
+    public var defaultRecordKind: RecordKind {
+        switch self {
+        case .swimming, .finswimming, .track: return .timedDistance
+        case .field: return .distanceAttempt
+        case .gym: return .weightReps
+        }
+    }
+
+    public var availableMovements: [String] {
+        switch self {
+        case .finswimming:
+            return ["surface", "apnea", "immersion", "bifins"]
+        case .swimming:
+            return ["freestyle", "butterfly", "backstroke", "breaststroke", "im"]
+        case .track:
+            return ["sprint", "hurdles", "middle_distance", "relay_split"]
+        case .field:
+            return ["long_jump", "high_jump", "triple_jump", "shot_put", "javelin"]
+        case .gym:
+            return ["back_squat", "front_squat", "deadlift", "bench_press", "pull_up", "leg_press"]
+        }
+    }
 }
 
 public enum EnvironmentType: String, Codable, CaseIterable, Sendable {
@@ -25,12 +48,29 @@ public enum EnvironmentType: String, Codable, CaseIterable, Sendable {
     case openWater = "open_water"
     case track
     case gym
+
+    public var displayTitle: String {
+        switch self {
+        case .pool: return "Πισίνα"
+        case .openWater: return "Ανοιχτή Θάλασσα"
+        case .track: return "Στίβος"
+        case .gym: return "Γυμναστήριο"
+        }
+    }
 }
 
 public enum RecordKind: String, Codable, CaseIterable, Sendable {
     case timedDistance = "timed_distance"
     case distanceAttempt = "distance_attempt"
     case weightReps = "weight_reps"
+
+    public var displayTitle: String {
+        switch self {
+        case .timedDistance: return "Χρόνος & Απόσταση"
+        case .distanceAttempt: return "Απόσταση / Ύψος (m)"
+        case .weightReps: return "Βάρος (kg) × Επαναλήψεις"
+        }
+    }
 }
 
 public enum RestMode: String, Codable, CaseIterable, Sendable {
@@ -131,6 +171,7 @@ public struct TemplateWithVersion: Codable, Equatable, Identifiable, Sendable {
     public let sportCategory: SportCategory
     public let poolLengthM: Int?
     public let environment: EnvironmentType
+    public let folderTag: String?
     public let isArchived: Bool
     public let activeVersion: TemplateVersion
     public let totalSessionsCount: Int
@@ -143,6 +184,7 @@ public struct CreateTemplateInput: Codable, Sendable {
     public let sportCategory: SportCategory
     public let poolLengthM: Int?
     public let environment: EnvironmentType
+    public let folderTag: String?
     public let rounds: Int
     public let roundRestMs: Int64
     public let equipment: [String]
@@ -155,6 +197,7 @@ public struct CreateTemplateInput: Codable, Sendable {
         sportCategory: SportCategory,
         poolLengthM: Int?,
         environment: EnvironmentType = .pool,
+        folderTag: String? = nil,
         rounds: Int = 1,
         roundRestMs: Int64 = 0,
         equipment: [String] = [],
@@ -166,6 +209,7 @@ public struct CreateTemplateInput: Codable, Sendable {
         self.sportCategory = sportCategory
         self.poolLengthM = poolLengthM
         self.environment = environment
+        self.folderTag = folderTag
         self.rounds = rounds
         self.roundRestMs = roundRestMs
         self.equipment = equipment
@@ -179,6 +223,7 @@ public struct UpdateTemplateProtocolInput: Codable, Sendable {
     public let templateId: String
     public let name: String?
     public let poolLengthM: Int?
+    public let folderTag: String?
     public let rounds: Int
     public let roundRestMs: Int64
     public let equipment: [String]
@@ -190,6 +235,7 @@ public struct UpdateTemplateProtocolInput: Codable, Sendable {
         templateId: String,
         name: String?,
         poolLengthM: Int?,
+        folderTag: String? = nil,
         rounds: Int,
         roundRestMs: Int64,
         equipment: [String],
@@ -200,6 +246,7 @@ public struct UpdateTemplateProtocolInput: Codable, Sendable {
         self.templateId = templateId
         self.name = name
         self.poolLengthM = poolLengthM
+        self.folderTag = folderTag
         self.rounds = rounds
         self.roundRestMs = roundRestMs
         self.equipment = equipment
@@ -209,7 +256,7 @@ public struct UpdateTemplateProtocolInput: Codable, Sendable {
     }
 }
 
-// MARK: - Sessions, Reps & Deterministic Analytics Models
+// MARK: - Sessions, Reps & Deterministic Analytics Models (v1.1 Multi-Sport)
 
 public struct RepInput: Codable, Equatable, Sendable {
     public let slotIndex: Int
@@ -219,6 +266,7 @@ public struct RepInput: Codable, Equatable, Sendable {
     public let weightKg: Double?
     public let repsCompleted: Int?
     public let attemptResultM: Double?
+    public let splitsMs: [Int64]
     public let isSkipped: Bool
     public let notes: String?
 
@@ -230,6 +278,7 @@ public struct RepInput: Codable, Equatable, Sendable {
         weightKg: Double? = nil,
         repsCompleted: Int? = nil,
         attemptResultM: Double? = nil,
+        splitsMs: [Int64] = [],
         isSkipped: Bool = false,
         notes: String? = nil
     ) {
@@ -240,6 +289,7 @@ public struct RepInput: Codable, Equatable, Sendable {
         self.weightKg = weightKg
         self.repsCompleted = repsCompleted
         self.attemptResultM = attemptResultM
+        self.splitsMs = splitsMs
         self.isSkipped = isSkipped
         self.notes = notes
     }
@@ -284,10 +334,12 @@ public struct RepRecord: Codable, Equatable, Identifiable, Sendable {
     public let paceMsPer100m: Int64?
     public let actualRestMs: Int64?
     public let strokeCount: Int?
+    public let swolfScore: Int?
     public let rpe: Int?
     public let weightKg: Double?
     public let repsCompleted: Int?
     public let attemptResultM: Double?
+    public let splitsMs: [Int64]?
     public let isSkipped: Bool
     public let notes: String?
 }
@@ -301,6 +353,9 @@ public struct SessionSummaryMetrics: Codable, Equatable, Sendable {
     public let stdDevMs: Double?
     public let consistencyCvPct: Double?
     public let fatigueIndexPct: Double?
+    public let totalTonnageKg: Double?
+    public let bestEstimated1RmKg: Double?
+    public let bestAttemptM: Double?
 }
 
 public struct SessionWithReps: Codable, Equatable, Identifiable, Sendable {
@@ -312,6 +367,7 @@ public struct SessionWithReps: Codable, Equatable, Identifiable, Sendable {
     public let protocolHash: String
     public let isHomogeneous: Bool
     public let workoutId: String?
+    public let exportedExternalUuid: String?
     public let performedAtMs: Int64
     public let poolLengthM: Int?
     public let isCompleted: Bool
@@ -367,6 +423,9 @@ public struct TemplateAnalyticsReport: Codable, Equatable, Sendable {
     public let personalBestAvgDurationMs: Int64?
     public let personalBestRepDurationMs: Int64?
     public let personalBestPaceMsPer100m: Int64?
+    public let personalBestTonnageKg: Double?
+    public let personalBest1RmKg: Double?
+    public let personalBestAttemptM: Double?
     public let latestVsPrevious: SessionComparison?
     public let latestVsPersonalBest: SessionComparison?
     public let healthCorrelations: [SessionHealthCorrelationNote]
@@ -388,6 +447,7 @@ public struct Workout: Codable, Equatable, Identifiable, Sendable {
     public let activeEnergyKcal: Double?
     public let avgHeartRateBpm: Double?
     public let maxHeartRateBpm: Double?
+    public let lapDurationsMs: [Int64]?
     public let notes: String?
     public let createdAtMs: Int64
 }
@@ -405,6 +465,7 @@ public struct ImportWorkoutInput: Codable, Sendable {
     public let activeEnergyKcal: Double?
     public let avgHeartRateBpm: Double?
     public let maxHeartRateBpm: Double?
+    public let lapDurationsMs: [Int64]
     public let notes: String?
 
     public init(
@@ -420,6 +481,7 @@ public struct ImportWorkoutInput: Codable, Sendable {
         activeEnergyKcal: Double? = nil,
         avgHeartRateBpm: Double? = nil,
         maxHeartRateBpm: Double? = nil,
+        lapDurationsMs: [Int64] = [],
         notes: String? = nil
     ) {
         self.sportCategory = sportCategory
@@ -434,6 +496,7 @@ public struct ImportWorkoutInput: Codable, Sendable {
         self.activeEnergyKcal = activeEnergyKcal
         self.avgHeartRateBpm = avgHeartRateBpm
         self.maxHeartRateBpm = maxHeartRateBpm
+        self.lapDurationsMs = lapDurationsMs
         self.notes = notes
     }
 }
@@ -492,4 +555,52 @@ public struct NumpadParseResult: Codable, Equatable, Sendable {
     public let rawDigits: String
     public let durationMs: Int64
     public let formattedDisplay: String
+}
+
+// MARK: - v1.1 Live Poolside Companion, Backup Restore & Database Diagnostics
+
+public struct LiveTimerTickInput: Codable, Equatable, Sendable {
+    public let restMode: RestMode
+    public let restOrSendoffMs: Int64
+    public let repElapsedMs: Int64
+    public let restElapsedMs: Int64?
+
+    public init(
+        restMode: RestMode,
+        restOrSendoffMs: Int64,
+        repElapsedMs: Int64,
+        restElapsedMs: Int64?
+    ) {
+        self.restMode = restMode
+        self.restOrSendoffMs = restOrSendoffMs
+        self.repElapsedMs = repElapsedMs
+        self.restElapsedMs = restElapsedMs
+    }
+}
+
+public struct LiveTimerTickOutput: Codable, Equatable, Sendable {
+    public let phase: String
+    public let formattedRepTime: String
+    public let remainingRestMs: Int64
+    public let formattedRemainingRest: String
+    public let audioCue: String
+    public let shouldAutoAdvance: Bool
+}
+
+public struct RestoreBackupResult: Codable, Equatable, Sendable {
+    public let templatesRestored: Int
+    public let workoutsRestored: Int
+    public let sessionsRestored: Int
+    public let healthSnapshotsRestored: Int
+}
+
+public struct DatabaseDiagnostics: Codable, Equatable, Sendable {
+    public let engineVersion: String
+    public let schemaVersion: Int
+    public let templatesCount: Int
+    public let templateVersionsCount: Int
+    public let sessionsCount: Int
+    public let repRecordsCount: Int
+    public let workoutsCount: Int
+    public let healthSnapshotsCount: Int
 }

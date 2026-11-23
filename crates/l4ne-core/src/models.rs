@@ -1,4 +1,4 @@
-//! Core domain models for L4NE Training (`l4ne-core`).
+//! Core domain models for L4NE Training v1.1 (`l4ne-core`).
 //! All time durations are stored in integer milliseconds (`i64`) to guarantee
 //! zero floating-point drift in deterministic athletic calculations.
 
@@ -24,7 +24,7 @@ pub enum CoreError {
     DuplicateExternalWorkout(String),
 }
 
-/// Supported sport categories (Multi-sport data model from v1.0).
+/// Supported sport categories (Multi-sport data model & v1.1 UI).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SportCategory {
@@ -188,7 +188,7 @@ pub struct TemplateBlockInput {
     pub repeat_count: i32,
     pub record_kind: RecordKind,
     pub distance_m: Option<i32>,
-    /// E.g., "surface", "apnea", "immersion", "bifins", "freestyle", "butterfly", "backstroke", "breaststroke", "im", "sprint", "squat"
+    /// E.g., "surface", "apnea", "immersion", "bifins", "freestyle", "butterfly", "backstroke", "breaststroke", "im", "sprint", "long_jump", "squat"
     pub stroke_or_movement: String,
     pub rest_mode: RestMode,
     pub rest_or_sendoff_ms: i64,
@@ -211,7 +211,6 @@ pub struct TemplateBlock {
 }
 
 /// Deterministically expanded expected repetition slot for a `TemplateVersion`.
-/// Flattens `rounds × blocks` into an exact 1-based sequence of slots (`1..=total_reps`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExpectedRepSlot {
     pub slot_index: i32,
@@ -233,6 +232,8 @@ pub struct CreateTemplateInput {
     pub sport_category: SportCategory,
     pub pool_length_m: Option<i32>,
     pub environment: EnvironmentType,
+    #[serde(default)]
+    pub folder_tag: Option<String>,
     pub rounds: i32,
     pub round_rest_ms: i64,
     pub equipment: Vec<String>,
@@ -242,13 +243,13 @@ pub struct CreateTemplateInput {
 }
 
 /// Input payload for updating a template's protocol.
-/// If the physiological protocol hash changes, a new `TemplateVersion` is created
-/// so past sessions retain historical integrity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateTemplateProtocolInput {
     pub template_id: String,
     pub name: Option<String>,
     pub pool_length_m: Option<i32>,
+    #[serde(default)]
+    pub folder_tag: Option<String>,
     pub rounds: i32,
     pub round_rest_ms: i64,
     pub equipment: Vec<String>,
@@ -284,6 +285,8 @@ pub struct TemplateWithVersion {
     pub sport_category: SportCategory,
     pub pool_length_m: Option<i32>,
     pub environment: EnvironmentType,
+    #[serde(default)]
+    pub folder_tag: Option<String>,
     pub is_archived: bool,
     pub active_version: TemplateVersion,
     pub total_sessions_count: i32,
@@ -301,6 +304,8 @@ pub struct RepInput {
     pub weight_kg: Option<f64>,
     pub reps_completed: Option<i32>,
     pub attempt_result_m: Option<f64>,
+    #[serde(default)]
+    pub splits_ms: Vec<i64>,
     pub is_skipped: bool,
     pub notes: Option<String>,
 }
@@ -309,7 +314,6 @@ pub struct RepInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogSessionInput {
     pub template_id: String,
-    /// Optional explicit version ID; defaults to the template's current `active_version_id`.
     pub template_version_id: Option<String>,
     pub workout_id: Option<String>,
     pub performed_at_ms: i64,
@@ -331,15 +335,19 @@ pub struct RepRecord {
     pub pace_ms_per_100m: Option<i64>,
     pub actual_rest_ms: Option<i64>,
     pub stroke_count: Option<i32>,
+    /// Deterministic SWOLF efficiency score = `round(duration_sec) + stroke_count`.
+    pub swolf_score: Option<i32>,
     pub rpe: Option<i32>,
     pub weight_kg: Option<f64>,
     pub reps_completed: Option<i32>,
     pub attempt_result_m: Option<f64>,
+    #[serde(default)]
+    pub splits_ms: Vec<i64>,
     pub is_skipped: bool,
     pub notes: Option<String>,
 }
 
-/// Deterministically computed summary metrics for a session.
+/// Deterministically computed summary metrics for a session (Multi-sport aware).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionSummaryMetrics {
     pub total_active_duration_ms: i64,
@@ -350,6 +358,15 @@ pub struct SessionSummaryMetrics {
     pub std_dev_ms: Option<f64>,
     pub consistency_cv_pct: Option<f64>,
     pub fatigue_index_pct: Option<f64>,
+    /// Multi-sport v1.1: Gym total tonnage (`sum(weight_kg * reps_completed)`).
+    #[serde(default)]
+    pub total_tonnage_kg: Option<f64>,
+    /// Multi-sport v1.1: Gym best estimated 1-Rep Max via Epley formula `weight * (1 + reps/30)`.
+    #[serde(default)]
+    pub best_estimated_1rm_kg: Option<f64>,
+    /// Multi-sport v1.1: Field best jump/throw distance or height in meters.
+    #[serde(default)]
+    pub best_attempt_m: Option<f64>,
 }
 
 /// Stored session bundled with its repetition records and protocol version metadata.
@@ -363,6 +380,9 @@ pub struct SessionWithReps {
     pub protocol_hash: String,
     pub is_homogeneous: bool,
     pub workout_id: Option<String>,
+    /// External UUID when exported to Apple HealthKit (`HKWorkout`) or Health Connect (prevents duplicate exports).
+    #[serde(default)]
+    pub exported_external_uuid: Option<String>,
     pub performed_at_ms: i64,
     pub pool_length_m: Option<i32>,
     pub is_completed: bool,
@@ -426,6 +446,9 @@ pub struct TemplateAnalyticsReport {
     pub personal_best_avg_duration_ms: Option<i64>,
     pub personal_best_rep_duration_ms: Option<i64>,
     pub personal_best_pace_ms_per_100m: Option<i64>,
+    pub personal_best_tonnage_kg: Option<f64>,
+    pub personal_best_1rm_kg: Option<f64>,
+    pub personal_best_attempt_m: Option<f64>,
     pub latest_vs_previous: Option<SessionComparison>,
     pub latest_vs_personal_best: Option<SessionComparison>,
     pub health_correlations: Vec<SessionHealthCorrelationNote>,
@@ -447,6 +470,9 @@ pub struct Workout {
     pub active_energy_kcal: Option<f64>,
     pub avg_heart_rate_bpm: Option<f64>,
     pub max_heart_rate_bpm: Option<f64>,
+    /// v1.2: Optional recorded lap/segment durations (in ms) from Apple Watch `HKWorkoutEvent`.
+    #[serde(default)]
+    pub lap_durations_ms: Vec<i64>,
     pub notes: Option<String>,
     pub created_at_ms: i64,
 }
@@ -466,6 +492,8 @@ pub struct ImportWorkoutInput {
     pub active_energy_kcal: Option<f64>,
     pub avg_heart_rate_bpm: Option<f64>,
     pub max_heart_rate_bpm: Option<f64>,
+    #[serde(default)]
+    pub lap_durations_ms: Vec<i64>,
     pub notes: Option<String>,
 }
 
@@ -513,13 +541,61 @@ pub struct NumpadParseResult {
     pub formatted_display: String,
 }
 
+/// Live Poolside Companion (v1.1) deterministic tick evaluation input.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiveTimerTickInput {
+    pub rest_mode: RestMode,
+    pub rest_or_sendoff_ms: i64,
+    /// Active swimming duration on the current repetition (if currently swimming), or final rep duration (if resting).
+    pub rep_elapsed_ms: i64,
+    /// Elapsed rest duration since the athlete touched the wall (`None` if still swimming the rep).
+    pub rest_elapsed_ms: Option<i64>,
+}
+
+/// Live Poolside Companion (v1.1) deterministic state evaluation output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LiveTimerTickOutput {
+    /// `"swimming"` | `"resting"` | `"sendoff_overrun"` | `"ready_to_depart"`
+    pub phase: String,
+    pub formatted_rep_time: String,
+    pub remaining_rest_ms: i64,
+    pub formatted_remaining_rest: String,
+    /// `"none"` | `"ten_sec_warning"` | `"five_sec_warning"` | `"countdown_3_2_1"` | `"depart_now"`
+    pub audio_cue: String,
+    pub should_auto_advance: bool,
+}
+
 /// Full portable JSON backup container for Local-First export/restore.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseBackupPayload {
     pub schema_version: i32,
     pub exported_at_ms: i64,
     pub templates: Vec<TemplateWithVersion>,
+    #[serde(default)]
+    pub all_template_versions: Vec<TemplateVersion>,
     pub workouts: Vec<Workout>,
     pub sessions: Vec<SessionWithReps>,
     pub health_snapshots: Vec<DailyHealthSnapshot>,
+}
+
+/// Summary returned after restoring a JSON backup (`import_json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RestoreBackupResult {
+    pub templates_restored: usize,
+    pub workouts_restored: usize,
+    pub sessions_restored: usize,
+    pub health_snapshots_restored: usize,
+}
+
+/// Local SQLite database diagnostics summary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatabaseDiagnostics {
+    pub engine_version: String,
+    pub schema_version: i32,
+    pub templates_count: i32,
+    pub template_versions_count: i32,
+    pub sessions_count: i32,
+    pub rep_records_count: i32,
+    pub workouts_count: i32,
+    pub health_snapshots_count: i32,
 }

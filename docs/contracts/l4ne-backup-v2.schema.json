@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/train-cell/L4NE-Performance/docs/contracts/l4ne-backup-v2.schema.json",
+  "title": "L4NE Training Portable Database Backup (v1.2 / Schema v2-v3)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "exported_at_ms",
+    "templates",
+    "workouts",
+    "sessions",
+    "health_snapshots"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "exported_at_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "templates": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "sport_category",
+          "environment",
+          "is_archived",
+          "active_version",
+          "total_sessions_count",
+          "created_at_ms",
+          "updated_at_ms"
+        ]
+      }
+    },
+    "all_template_versions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "template_id",
+          "version_number",
+          "protocol_hash",
+          "rounds",
+          "round_rest_ms",
+          "equipment",
+          "total_reps",
+          "is_homogeneous",
+          "blocks",
+          "created_at_ms"
+        ]
+      }
+    },
+    "workouts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "sport_category",
+          "source_type",
+          "started_at_ms",
+          "created_at_ms"
+        ]
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "template_id",
+          "template_name",
+          "template_version_id",
+          "template_version_number",
+          "protocol_hash",
+          "is_homogeneous",
+          "performed_at_ms",
+          "is_completed",
+          "metrics",
+          "reps",
+          "created_at_ms"
+        ]
+      }
+    },
+    "health_snapshots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "date_iso",
+          "captured_at_ms"
+        ],
+        "properties": {
+          "date_iso": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "captured_at_ms": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}
