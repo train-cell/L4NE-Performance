@@ -732,7 +732,7 @@ public struct L4NEBrandWordmark: View {
     }
 
     public var body: some View {
-        HStack(spacing: 11) {
+        HStack(spacing: 9) {
             L4NEAnimatedStartingBlockBadge(
                 palette: palette,
                 isMaximized: isMaximized
@@ -747,14 +747,17 @@ public struct L4NEBrandWordmark: View {
                     Text("NE")
                         .foregroundStyle(palette.textPrimary)
                 }
-                .font(.system(size: 21, weight: .black, design: .rounded))
-                .tracking(1.8)
+                .font(.system(size: 19, weight: .black, design: .rounded))
+                .tracking(1.4)
+                .lineLimit(1)
 
                 Text(subtitle)
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
                     .foregroundStyle(palette.textSecondary)
-                    .tracking(1.6)
+                    .tracking(1.3)
+                    .lineLimit(1)
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
     }
 }

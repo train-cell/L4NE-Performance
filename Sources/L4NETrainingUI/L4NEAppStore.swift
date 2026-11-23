@@ -63,7 +63,7 @@ public final class L4NEAppStore: ObservableObject {
         } else {
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
                 ?? URL(fileURLWithPath: NSTemporaryDirectory())
-            resolvedPath = docs.appendingPathComponent("l4ne_training_v1_3.sqlite").path
+            resolvedPath = docs.appendingPathComponent("l4ne_performance_v1_4.sqlite").path
         }
         self.client = L4NECoreClient(databasePath: resolvedPath)
         self.bootstrap()
