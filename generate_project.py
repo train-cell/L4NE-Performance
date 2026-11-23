@@ -179,7 +179,10 @@ def generate_pbxproj():
 					"$(PROJECT_DIR)/target/release",
 				);
 				OTHER_LDFLAGS = (
-					"-ll4ne_core",
+					"$(PROJECT_DIR)/target/release/libl4ne_core.a",
+				);
+				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = (
+					"$(PROJECT_DIR)/target/release/libl4ne_core_iossim.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.l4ne.training;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -201,7 +204,10 @@ def generate_pbxproj():
 					"$(PROJECT_DIR)/target/release",
 				);
 				OTHER_LDFLAGS = (
-					"-ll4ne_core",
+					"$(PROJECT_DIR)/target/release/libl4ne_core.a",
+				);
+				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = (
+					"$(PROJECT_DIR)/target/release/libl4ne_core_iossim.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.l4ne.training;
 				PRODUCT_NAME = "$(TARGET_NAME)";

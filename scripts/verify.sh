@@ -4,13 +4,40 @@ set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-echo "=== [1/4] Running Rust Core v1.1.0 Unit & Integration Tests (cargo test) ==="
+echo "=== [1/4] Running Rust Core v1.3.0 Unit & Integration Tests (cargo test) ==="
 cargo test --workspace
 
-echo "=== [2/4] Building Optimized Rust Static Library (libl4ne_core.a) ==="
+echo "=== [2/4] Building Optimized Rust Static Archives (libl4ne_core.a & libl4ne_core_iossim.a) ==="
 cargo build --release
+python3 - <<'PY'
+import glob, os, shutil, struct, subprocess, tempfile
 
-echo "=== [3/4] Compiling & Running Swift 6 + SwiftUI + Rust FFI v1.1.0 Verification Suite ==="
+repo = os.getcwd()
+src_ar = os.path.join(repo, "target/release/libl4ne_core.a")
+dst_ar = os.path.join(repo, "target/release/libl4ne_core_iossim.a")
+tmp = tempfile.mkdtemp(prefix="l4ne_iossim_")
+try:
+    shutil.copy2(src_ar, os.path.join(tmp, "libl4ne_core.a"))
+    subprocess.run(["ar", "-x", "libl4ne_core.a"], cwd=tmp, check=True)
+    objs = sorted(glob.glob(os.path.join(tmp, "*.o")))
+    for p in objs:
+        data = bytearray(open(p, "rb").read())
+        magic, _cputype, _cpusubtype, _filetype, ncmds, _sizeofcmds, _flags, _reserved = struct.unpack_from("<IIIIIIII", data, 0)
+        if magic != 0xFEEDFACF:
+            continue
+        off = 32
+        for _ in range(ncmds):
+            cmd, cmdsize = struct.unpack_from("<II", data, off)
+            if cmd == 0x32:  # LC_BUILD_VERSION -> PLATFORM_IOSSIMULATOR (7)
+                struct.pack_into("<III", data, off + 8, 7, 0x00110000, 0x001B0200)
+            off += cmdsize
+        open(p, "wb").write(data)
+    subprocess.run(["libtool", "-static", "-o", dst_ar] + objs, check=True)
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
+PY
+
+echo "=== [3/4] Compiling & Running Swift 6 + SwiftUI + Rust FFI v1.3.0 Verification Suite ==="
 mkdir -p .build/verify
 swiftc \
     -O \
