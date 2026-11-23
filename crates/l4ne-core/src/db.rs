@@ -6,8 +6,8 @@
 //! and full JSON Backup/Restore + CSV export.
 
 use crate::analytics::{
-    compute_actual_rest_ms, compute_pace_ms_per_100m, compute_session_metrics,
-    compute_swolf_score, compute_template_analytics, epoch_ms_to_date_iso,
+    compute_actual_rest_ms, compute_health_context_summary, compute_pace_ms_per_100m,
+    compute_session_metrics, compute_swolf_score, compute_template_analytics, epoch_ms_to_date_iso,
 };
 use crate::engine::{
     compute_protocol_hash, compute_total_distance_m, expand_template_slots,
@@ -15,12 +15,13 @@ use crate::engine::{
 };
 use crate::matcher::match_workout_to_templates;
 use crate::models::{
-    CoreError, CreateTemplateInput, DailyHealthSnapshot, DailyTrainingTimeline,
+    AppSettings, CoreError, CreateTemplateInput, DailyHealthSnapshot, DailyTrainingTimeline,
     DatabaseBackupPayload, DatabaseDiagnostics, EnvironmentType, ExpectedRepSlot,
-    ImportWorkoutInput, LogSessionInput, RecordKind, RepInput, RepRecord, RestMode,
-    RestoreBackupResult, SessionSummaryMetrics, SessionWithReps, SportCategory,
+    HealthContextSummary, ImportWorkoutInput, LogSessionInput, RecordKind, RepInput, RepRecord,
+    RestMode, RestoreBackupResult, SessionSummaryMetrics, SessionWithReps, SportCategory,
     TemplateAnalyticsReport, TemplateBlock, TemplateBlockInput, TemplateMatchCandidate,
-    TemplateVersion, TemplateWithVersion, UpdateTemplateProtocolInput, Workout, WorkoutSourceType,
+    TemplateVersion, TemplateWithVersion, ThemePreset, UpdateTemplateProtocolInput, Workout,
+    WorkoutSourceType,
 };
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
@@ -107,10 +108,28 @@ impl L4neDatabase {
                 active_energy_kcal REAL,
                 avg_heart_rate_bpm REAL,
                 max_heart_rate_bpm REAL,
+                has_route INTEGER NOT NULL DEFAULT 0,
+                route_summary TEXT,
+                kept_as_standalone INTEGER NOT NULL DEFAULT 0,
                 lap_durations_json TEXT NOT NULL DEFAULT '[]',
                 notes TEXT,
                 created_at_ms INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS app_settings (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                active_theme TEXT NOT NULL DEFAULT 'graphite_bevel',
+                default_pool_length_m INTEGER NOT NULL DEFAULT 50,
+                preferred_sport TEXT NOT NULL DEFAULT 'finswimming',
+                haptics_enabled INTEGER NOT NULL DEFAULT 1,
+                auto_advance_sendoff INTEGER NOT NULL DEFAULT 1,
+                updated_at_ms INTEGER NOT NULL DEFAULT 0
+            );
+
+            INSERT OR IGNORE INTO app_settings (
+                singleton_id, active_theme, default_pool_length_m, preferred_sport,
+                haptics_enabled, auto_advance_sendoff, updated_at_ms
+            ) VALUES (1, 'graphite_bevel', 50, 'finswimming', 1, 1, 1795356000000);
 
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -174,10 +193,13 @@ impl L4neDatabase {
             "#,
         )?;
 
-        // Resilient schema v1 -> v2 -> v3 column upgrades for pre-existing local SQLite databases
+        // Resilient schema v1 -> v2 -> v3 -> v4 column upgrades for pre-existing local SQLite databases
         let alter_statements = [
             "ALTER TABLE templates ADD COLUMN folder_tag TEXT",
             "ALTER TABLE workouts ADD COLUMN lap_durations_json TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE workouts ADD COLUMN has_route INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE workouts ADD COLUMN route_summary TEXT",
+            "ALTER TABLE workouts ADD COLUMN kept_as_standalone INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE sessions ADD COLUMN exported_external_uuid TEXT",
             "ALTER TABLE sessions ADD COLUMN total_tonnage_kg REAL",
             "ALTER TABLE sessions ADD COLUMN best_estimated_1rm_kg REAL",
@@ -1068,8 +1090,9 @@ impl L4neDatabase {
                 external_source_name, started_at_ms, ended_at_ms,
                 duration_ms, total_distance_m, pool_length_m,
                 active_energy_kcal, avg_heart_rate_bpm, max_heart_rate_bpm,
+                has_route, route_summary, kept_as_standalone,
                 lap_durations_json, notes, created_at_ms
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, ?16, ?17, ?18)
             "#,
             params![
                 id,
@@ -1085,6 +1108,8 @@ impl L4neDatabase {
                 input.active_energy_kcal,
                 input.avg_heart_rate_bpm,
                 input.max_heart_rate_bpm,
+                if input.has_route { 1 } else { 0 },
+                input.route_summary,
                 laps_json,
                 input.notes,
                 now_ms
@@ -1094,23 +1119,43 @@ impl L4neDatabase {
         self.get_workout(&id)
     }
 
-    /// Retrieves a workout by ID.
+    /// Marks an imported workout as explicitly kept as a general standalone record (Step 7 of Import Flow).
+    pub fn set_workout_standalone(
+        &mut self,
+        workout_id: &str,
+        kept_as_standalone: bool,
+    ) -> Result<Workout, CoreError> {
+        let changed = self.conn.execute(
+            "UPDATE workouts SET kept_as_standalone = ?1 WHERE id = ?2",
+            params![if kept_as_standalone { 1 } else { 0 }, workout_id],
+        )?;
+        if changed == 0 {
+            return Err(CoreError::NotFound(format!(
+                "Workout not found: {workout_id}"
+            )));
+        }
+        self.get_workout(workout_id)
+    }
+
+    /// Retrieves a workout by ID (including its live `associated_templates_count`).
     pub fn get_workout(&self, workout_id: &str) -> Result<Workout, CoreError> {
         let row = self
             .conn
             .query_row(
                 r#"
-                SELECT id, sport_category, source_type, external_source_uuid,
-                       external_source_name, started_at_ms, ended_at_ms,
-                       duration_ms, total_distance_m, pool_length_m,
-                       active_energy_kcal, avg_heart_rate_bpm, max_heart_rate_bpm,
-                       lap_durations_json, notes, created_at_ms
-                FROM workouts
-                WHERE id = ?1
+                SELECT w.id, w.sport_category, w.source_type, w.external_source_uuid,
+                       w.external_source_name, w.started_at_ms, w.ended_at_ms,
+                       w.duration_ms, w.total_distance_m, w.pool_length_m,
+                       w.active_energy_kcal, w.avg_heart_rate_bpm, w.max_heart_rate_bpm,
+                       w.has_route, w.route_summary, w.kept_as_standalone,
+                       (SELECT COUNT(*) FROM sessions s WHERE s.workout_id = w.id),
+                       w.lap_durations_json, w.notes, w.created_at_ms
+                FROM workouts w
+                WHERE w.id = ?1
                 "#,
                 params![workout_id],
                 |r| {
-                    let laps_str: String = r.get(13)?;
+                    let laps_str: String = r.get(17)?;
                     let laps: Vec<i64> = serde_json::from_str(&laps_str).unwrap_or_default();
                     Ok((
                         r.get::<_, String>(0)?,
@@ -1126,9 +1171,13 @@ impl L4neDatabase {
                         r.get::<_, Option<f64>>(10)?,
                         r.get::<_, Option<f64>>(11)?,
                         r.get::<_, Option<f64>>(12)?,
-                        laps,
+                        r.get::<_, i32>(13)? != 0,
                         r.get::<_, Option<String>>(14)?,
-                        r.get::<_, i64>(15)?,
+                        r.get::<_, i32>(15)? != 0,
+                        r.get::<_, i32>(16)?,
+                        laps,
+                        r.get::<_, Option<String>>(18)?,
+                        r.get::<_, i64>(19)?,
                     ))
                 },
             )
@@ -1149,9 +1198,13 @@ impl L4neDatabase {
             active_energy_kcal: row.10,
             avg_heart_rate_bpm: row.11,
             max_heart_rate_bpm: row.12,
-            lap_durations_ms: row.13,
-            notes: row.14,
-            created_at_ms: row.15,
+            has_route: row.13,
+            route_summary: row.14,
+            kept_as_standalone: row.15,
+            associated_templates_count: row.16,
+            lap_durations_ms: row.17,
+            notes: row.18,
+            created_at_ms: row.19,
         })
     }
 
@@ -1313,6 +1366,72 @@ impl L4neDatabase {
         Ok(rows)
     }
 
+    /// Computes the deterministic `HealthContextSummary` (Screen 7 — Health Context & Bevel Rings).
+    pub fn get_health_context_summary(&self) -> Result<HealthContextSummary, CoreError> {
+        let snapshots = self.list_health_snapshots()?;
+        Ok(compute_health_context_summary(&snapshots))
+    }
+
+    /// Reads the persisted `AppSettings` (Multi-Theme preset, default pool length, preferred sport).
+    pub fn get_app_settings(&self) -> Result<AppSettings, CoreError> {
+        let row = self.conn.query_row(
+            r#"
+            SELECT active_theme, default_pool_length_m, preferred_sport,
+                   haptics_enabled, auto_advance_sendoff, updated_at_ms
+            FROM app_settings
+            WHERE singleton_id = 1
+            "#,
+            [],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i32>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i32>(3)? != 0,
+                    r.get::<_, i32>(4)? != 0,
+                    r.get::<_, i64>(5)?,
+                ))
+            },
+        )?;
+
+        Ok(AppSettings {
+            active_theme: ThemePreset::from_db(&row.0)?,
+            default_pool_length_m: row.1,
+            preferred_sport: SportCategory::from_db(&row.2)?,
+            haptics_enabled: row.3,
+            auto_advance_sendoff: row.4,
+            updated_at_ms: row.5,
+        })
+    }
+
+    /// Updates the persisted `AppSettings` in SQLite.
+    pub fn update_app_settings(
+        &mut self,
+        settings: &AppSettings,
+    ) -> Result<AppSettings, CoreError> {
+        self.conn.execute(
+            r#"
+            UPDATE app_settings
+            SET active_theme = ?1,
+                default_pool_length_m = ?2,
+                preferred_sport = ?3,
+                haptics_enabled = ?4,
+                auto_advance_sendoff = ?5,
+                updated_at_ms = ?6
+            WHERE singleton_id = 1
+            "#,
+            params![
+                settings.active_theme.as_str(),
+                settings.default_pool_length_m,
+                settings.preferred_sport.as_str(),
+                if settings.haptics_enabled { 1 } else { 0 },
+                if settings.auto_advance_sendoff { 1 } else { 0 },
+                settings.updated_at_ms
+            ],
+        )?;
+        self.get_app_settings()
+    }
+
     /// Builds the unified `DailyTrainingTimeline` for a specific date (`YYYY-MM-DD`).
     pub fn get_daily_timeline(&self, date_iso: &str) -> Result<DailyTrainingTimeline, CoreError> {
         let workouts: Vec<Workout> = self
@@ -1412,7 +1531,7 @@ impl L4neDatabase {
         }
 
         let payload: DatabaseBackupPayload = serde_json::from_str(backup_json)?;
-        if payload.schema_version < 1 || payload.schema_version > 3 {
+        if payload.schema_version < 1 || payload.schema_version > 4 {
             return Err(CoreError::Validation(format!(
                 "Unsupported backup schema_version: {}",
                 payload.schema_version
@@ -1797,8 +1916,8 @@ impl L4neDatabase {
                 .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))?)
         };
         Ok(DatabaseDiagnostics {
-            engine_version: "1.2.0".to_string(),
-            schema_version: 3,
+            engine_version: "1.3.0".to_string(),
+            schema_version: 4,
             templates_count: count_of("templates")?,
             template_versions_count: count_of("template_versions")?,
             sessions_count: count_of("sessions")?,
@@ -1948,6 +2067,58 @@ impl L4neDatabase {
             nov_15_2026_ms,
         )?;
 
+        // 4. Overview Section 3 Example B: 6 × 100m — 60s Rest
+        let _tpl_ex_b = self.create_template(
+            &CreateTemplateInput {
+                name: "6×100m Freestyle — 60s Rest".to_string(),
+                sport_category: SportCategory::Swimming,
+                pool_length_m: Some(50),
+                environment: EnvironmentType::Pool,
+                folder_tag: Some("VO2 Max / Pace".to_string()),
+                rounds: 1,
+                round_rest_ms: 0,
+                equipment: vec![],
+                target_pace_ms_per_100m: Some(62_000),
+                notes: Some("Overview Example B: 6×100m with 60s recovery.".to_string()),
+                blocks: vec![TemplateBlockInput {
+                    repeat_count: 6,
+                    record_kind: RecordKind::TimedDistance,
+                    distance_m: Some(100),
+                    stroke_or_movement: "freestyle".to_string(),
+                    rest_mode: RestMode::FixedRest,
+                    rest_or_sendoff_ms: 60_000,
+                    target_duration_ms: Some(62_000),
+                }],
+            },
+            nov_15_2026_ms,
+        )?;
+
+        // 5. Overview Section 3 Example C: 6 × 100m — 30s Rest (Distinct protocol from B due to 30s rest!)
+        let _tpl_ex_c = self.create_template(
+            &CreateTemplateInput {
+                name: "6×100m Freestyle — 30s Rest".to_string(),
+                sport_category: SportCategory::Swimming,
+                pool_length_m: Some(50),
+                environment: EnvironmentType::Pool,
+                folder_tag: Some("Aerobic Threshold".to_string()),
+                rounds: 1,
+                round_rest_ms: 0,
+                equipment: vec![],
+                target_pace_ms_per_100m: Some(64_500),
+                notes: Some("Overview Example C: 6×100m with short 30s rest (distinct protocol from 60s rest).".to_string()),
+                blocks: vec![TemplateBlockInput {
+                    repeat_count: 6,
+                    record_kind: RecordKind::TimedDistance,
+                    distance_m: Some(100),
+                    stroke_or_movement: "freestyle".to_string(),
+                    rest_mode: RestMode::FixedRest,
+                    rest_or_sendoff_ms: 30_000,
+                    target_duration_ms: Some(64_500),
+                }],
+            },
+            nov_15_2026_ms,
+        )?;
+
         // Seed Apple Watch Imported Workout on Nov 22, 2026 (including recorded 50m lap events!)
         let apple_workout = self.import_workout(
             &ImportWorkoutInput {
@@ -1963,6 +2134,8 @@ impl L4neDatabase {
                 active_energy_kcal: Some(612.0),
                 avg_heart_rate_bpm: Some(154.0),
                 max_heart_rate_bpm: Some(182.0),
+                has_route: false,
+                route_summary: None,
                 lap_durations_ms: vec![
                     18_200, 18_350, 18_400, 18_300, 18_250, 18_300, 18_150, 17_950,
                 ],

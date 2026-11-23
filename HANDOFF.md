@@ -1,9 +1,9 @@
-# Engineering Handoff — L4NE Performance (`L4NE Training` v1.2.0)
+# Engineering Handoff — L4NE Performance (`L4NE Training` v1.3.0)
 
 **Date:** 23/11/2026, Europe/Athens  
 **Repository:** `https://github.com/train-cell/L4NE-Performance`  
 **Local Path:** `/Users/john_ak/antigarvity/L4NE-Performance` (symlinked at `/Users/john_ak/L4NE-Performance`)  
-**Engine Version:** `1.2.0` (SQLite Schema v3)  
+**Engine Version:** `1.3.0` (SQLite Schema v4)  
 **License:** GNU GPL v3.0 (`GPL-3.0-only`) + Proprietary Trademark Policy ([TRADEMARK.md](TRADEMARK.md))
 
 ---

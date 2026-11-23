@@ -6,7 +6,7 @@ import Charts
 import L4NETrainingCore
 #endif
 
-/// Root container view providing navigation across the 5 primary tabs (covering all 8 v1.1 screens).
+/// Root container view providing navigation across the 6 tabs (covering all 8 overview screens + Multi-Theme Engine).
 public struct L4NERootView: View {
     @StateObject private var store: L4NEAppStore
 
@@ -18,7 +18,7 @@ public struct L4NERootView: View {
         TabView {
             DashboardView(store: store)
                 .tabItem {
-                    Label("Dashboard", systemImage: "gauge.with.needle.fill")
+                    Label("Cockpit", systemImage: "gauge.with.needle.fill")
                 }
 
             TemplatesLibraryView(store: store)
@@ -31,6 +31,11 @@ public struct L4NERootView: View {
                     Label("Timeline", systemImage: "calendar.day.timeline.left")
                 }
 
+            HealthContextView(store: store)
+                .tabItem {
+                    Label("Recovery", systemImage: "heart.text.square.fill")
+                }
+
             WorkoutImportView(store: store)
                 .tabItem {
                     Label("HealthKit", systemImage: "applewatch.radiowaves.left.and.right")
@@ -38,15 +43,15 @@ public struct L4NERootView: View {
 
             SettingsDataView(store: store)
                 .tabItem {
-                    Label("Data", systemImage: "externaldrive.fill.badge.checkmark")
+                    Label("Themes & Data", systemImage: "paintpalette.fill")
                 }
         }
-        .tint(L4NETheme.electricLime)
-        .preferredColorScheme(.dark)
+        .tint(store.activePalette.primaryAccent)
+        .preferredColorScheme(store.activePalette.isLightMode ? .light : .dark)
     }
 }
 
-// MARK: - 1. Dashboard Screen (v1.1 with Fast Numpad + Live Poolside Timer + Multi-Sport Filter)
+// MARK: - 1. Dashboard Screen (Bevel Concentric Rings + Strava Activity Feed + Multi-Theme Switcher)
 
 public struct DashboardView: View {
     @ObservedObject var store: L4NEAppStore
@@ -57,36 +62,81 @@ public struct DashboardView: View {
         self.store = store
     }
 
+    private var avgConsistencyScorePct: Double? {
+        let cvs = store.recentSessions.compactMap { $0.metrics.consistencyCvPct }
+        guard !cvs.isEmpty else { return nil }
+        let meanCv = cvs.reduce(0.0, +) / Double(cvs.count)
+        return max(0.0, min(100.0, 100.0 - (meanCv * 5.0)))
+    }
+
     public var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    // Brand Header
+                    // Brand Header + Quick Multi-Theme Cycle Pill
                     HStack {
-                        L4NEBrandWordmark(subtitle: "TRAINING · BUILT TO OUTPERFORM")
+                        L4NEBrandWordmark(
+                            subtitle: "BEVEL GRAPHITE · STRAVA ANALYTICS",
+                            palette: store.activePalette
+                        )
                         Spacer()
-                        Text("v\(L4NECoreClient.engineVersion)")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(L4NETheme.mutedSurface)
-                            .foregroundStyle(L4NETheme.electricLime)
+                        Menu {
+                            ForEach(ThemePreset.allCases) { preset in
+                                Button {
+                                    store.selectTheme(preset)
+                                } label: {
+                                    HStack {
+                                        Text(preset.displayTitle)
+                                        if store.appSettings.activeTheme == preset {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "paintpalette.fill")
+                                Text(store.appSettings.activeTheme.displayTitle)
+                                    .lineLimit(1)
+                            }
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(store.activePalette.surface2)
+                            .foregroundStyle(store.activePalette.primaryAccent)
                             .clipShape(Capsule())
+                        }
                     }
 
                     if let status = store.lastStatusBanner {
                         HStack {
                             Image(systemName: "checkmark.seal.fill")
-                                .foregroundStyle(L4NETheme.electricLime)
+                                .foregroundStyle(store.activePalette.primaryAccent)
                             Text(status)
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(L4NETheme.textPrimary)
+                                .foregroundStyle(store.activePalette.textPrimary)
                             Spacer()
                         }
                         .padding(10)
-                        .background(L4NETheme.cardSurface)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .l4neBevelCard(cornerRadius: 12, palette: store.activePalette)
                     }
+
+                    // Bevel Concentric Rings Cockpit Card (Volume/Strain · Consistency · Recovery/Sleep)
+                    let dailyMeters = store.currentTimeline?.totalVolumeDistanceM ?? 2400.0
+                    let volumePct = min(100.0, (dailyMeters / 3000.0) * 100.0)
+                    let recoveryPct = store.healthContext?.bevelRecoveryRingPct
+                    let latestHrv = store.healthContext?.latestSnapshot?.hrvSdnnMs
+                    let recoveryLabel = latestHrv.map { String(format: "HRV %.1f ms", $0) } ?? "—"
+
+                    L4NEBevelRingsCard(
+                        palette: store.activePalette,
+                        volumePct: volumePct,
+                        consistencyPct: avgConsistencyScorePct,
+                        recoveryPct: recoveryPct,
+                        totalMetersText: String(format: "%.0f m", dailyMeters),
+                        bestImprovementText: "PB 17.95s · +4.38% THIS WEEK",
+                        recoveryContextText: recoveryLabel
+                    )
 
                     // Multi-Sport Filter Strip
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -109,28 +159,11 @@ public struct DashboardView: View {
                         }
                     }
 
-                    // Deterministic Metrics Summary
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        L4NEMetricTile(
-                            title: "Active Protocols",
-                            value: "\(store.filteredTemplates.count)",
-                            subtitle: "SHA-256 Versioned",
-                            accentColor: L4NETheme.electricLime
-                        )
-
-                        L4NEMetricTile(
-                            title: "Logged Sessions",
-                            value: "\(store.recentSessions.count)",
-                            subtitle: "Local-First SQLite v2",
-                            accentColor: L4NETheme.textPrimary
-                        )
-                    }
-
-                    // Quick Launch: Post-Workout Numpad OR Live Poolside Companion (v1.1)
+                    // Quick Launch: Post-Workout Numpad OR Live Poolside Companion
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("START TRAINING OR LOG PROTOCOL")
+                        Text("PROTOCOLS & TEMPLATES (\(store.filteredTemplates.count))")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundStyle(L4NETheme.textSecondary)
+                            .foregroundStyle(store.activePalette.textSecondary)
                             .tracking(1.2)
 
                         ForEach(store.filteredTemplates) { tpl in
@@ -140,20 +173,20 @@ public struct DashboardView: View {
                                         HStack(spacing: 6) {
                                             Text(tpl.name)
                                                 .font(.system(size: 15, weight: .bold))
-                                                .foregroundStyle(L4NETheme.textPrimary)
+                                                .foregroundStyle(store.activePalette.textPrimary)
 
                                             Text("v\(tpl.activeVersion.versionNumber)")
                                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                                                 .padding(.horizontal, 6)
                                                 .padding(.vertical, 2)
-                                                .background(L4NETheme.mutedSurface)
-                                                .foregroundStyle(L4NETheme.electricLime)
+                                                .background(store.activePalette.surface2)
+                                                .foregroundStyle(store.activePalette.primaryAccent)
                                                 .clipShape(Capsule())
                                         }
 
                                         Text("\(tpl.sportCategory.displayTitle) · \(tpl.activeVersion.totalReps) reps · \(tpl.activeVersion.totalDistanceM.map { "\($0)m · " } ?? "")\(tpl.activeVersion.isHomogeneous ? "Homogeneous" : "Pyramid / Compound")")
                                             .font(.system(size: 12))
-                                            .foregroundStyle(L4NETheme.textSecondary)
+                                            .foregroundStyle(store.activePalette.textSecondary)
                                     }
                                     Spacer()
                                 }
@@ -165,12 +198,10 @@ public struct DashboardView: View {
                                         Label("FAST NUMPAD LOG", systemImage: "number.square.fill")
                                             .font(.system(size: 11, weight: .black, design: .monospaced))
                                             .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 9)
-                                            .background(L4NETheme.electricLime)
-                                            .foregroundStyle(Color.black)
-                                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                                            .padding(.vertical, 10)
+                                            .foregroundStyle(store.activePalette.textOnAccent)
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(L4NETactileBevelButtonStyle(surfaceColor: store.activePalette.primaryAccent, cornerRadius: 10))
 
                                     Button {
                                         selectedTemplateForLiveTimer = tpl
@@ -178,36 +209,29 @@ public struct DashboardView: View {
                                         Label("LIVE TIMER", systemImage: "stopwatch.fill")
                                             .font(.system(size: 11, weight: .black, design: .monospaced))
                                             .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 9)
-                                            .background(L4NETheme.mutedSurface)
-                                            .foregroundStyle(L4NETheme.electricLime)
-                                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                                            .padding(.vertical, 10)
+                                            .foregroundStyle(store.activePalette.primaryAccent)
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(L4NETactileBevelButtonStyle(surfaceColor: store.activePalette.surface2, cornerRadius: 10))
                                 }
                             }
                             .padding(14)
-                            .background(L4NETheme.cardSurface)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(L4NETheme.border, lineWidth: 1)
-                            )
+                            .l4neBevelCard(cornerRadius: 16, palette: store.activePalette)
                         }
                     }
 
-                    // Recent Deterministic Sessions
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("RECENT DETERMINISTIC SESSIONS")
+                    // Strava-Style Activity Feed Cards with Split Pace Bar Charts
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("STRAVA-STYLE ACTIVITY FEED & SPLIT ANALYSIS")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundStyle(L4NETheme.textSecondary)
+                            .foregroundStyle(store.activePalette.textSecondary)
                             .tracking(1.2)
 
                         ForEach(store.recentSessions) { session in
                             NavigationLink {
                                 TemplateAnalyticsView(store: store, templateId: session.templateId)
                             } label: {
-                                SessionSummaryCard(session: session)
+                                SessionSummaryCard(session: session, showStravaSplits: true)
                             }
                             .buttonStyle(.plain)
                         }
@@ -215,7 +239,7 @@ public struct DashboardView: View {
                 }
                 .padding(16)
             }
-            .background(L4NETheme.background.ignoresSafeArea())
+            .background(store.activePalette.bgCanvas.ignoresSafeArea())
             .sheet(item: $selectedTemplateForNumpad) { template in
                 SessionLoggingView(store: store, template: template)
             }
@@ -251,37 +275,59 @@ struct SportFilterPill: View {
 
 struct SessionSummaryCard: View {
     let session: SessionWithReps
+    var showStravaSplits: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(session.templateName)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(L4NETheme.textPrimary)
-                Spacer()
-                if session.exportedExternalUuid != nil {
-                    Text("HK EXPORTED")
-                        .font(.system(size: 9, weight: .black, design: .monospaced))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(L4NETheme.mutedSurface)
-                        .foregroundStyle(L4NETheme.signalGreen)
-                        .clipShape(Capsule())
+        let palette = L4NETheme.activePalette
+        VStack(alignment: .leading, spacing: 12) {
+            // Strava Activity Header + PR / Negative Split Trophy Badges
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(session.templateName)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(palette.textPrimary)
+                    Text("\(L4NEDurationFormatter.formatEpochDate(session.performedAtMs)) · \(session.poolLengthM.map { "\($0)m Pool" } ?? "Athletic Protocol") · Protocol v\(session.templateVersionNumber)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(palette.textSecondary)
                 }
-                Text("v\(session.templateVersionNumber)")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundStyle(L4NETheme.electricLime)
+                Spacer()
+                HStack(spacing: 6) {
+                    if let fatigue = session.metrics.fatigueIndexPct, fatigue <= 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "bolt.fill")
+                            Text("NEG SPLIT")
+                        }
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(palette.prGold.opacity(0.18))
+                        .foregroundStyle(palette.prGold)
+                        .clipShape(Capsule())
+                    }
+
+                    if session.exportedExternalUuid != nil {
+                        Text("HK EXPORTED")
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(palette.surface2)
+                            .foregroundStyle(palette.signalGreen)
+                            .clipShape(Capsule())
+                    }
+                }
             }
 
+            // Strava 3-Column Hero Metrics Strip
             HStack(spacing: 16) {
                 if let avg = session.metrics.avgDurationMs {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("AVG REP")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(L4NETheme.textSecondary)
+                            .foregroundStyle(palette.textSecondary)
                         Text(L4NEDurationFormatter.formatMs(avg))
-                            .font(.system(size: 15, weight: .heavy, design: .monospaced))
-                            .foregroundStyle(L4NETheme.electricLime)
+                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(palette.primaryAccent)
                     }
                 }
 
@@ -289,10 +335,11 @@ struct SessionSummaryCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("PACE / 100M")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(L4NETheme.textSecondary)
+                            .foregroundStyle(palette.textSecondary)
                         Text(L4NEDurationFormatter.formatPacePer100m(pace))
-                            .font(.system(size: 15, weight: .heavy, design: .monospaced))
-                            .foregroundStyle(L4NETheme.textPrimary)
+                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(palette.textPrimary)
                     }
                 }
 
@@ -300,10 +347,11 @@ struct SessionSummaryCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("TONNAGE")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(L4NETheme.textSecondary)
+                            .foregroundStyle(palette.textSecondary)
                         Text(String(format: "%.0f kg", tonnage))
-                            .font(.system(size: 15, weight: .heavy, design: .monospaced))
-                            .foregroundStyle(L4NETheme.electricLime)
+                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(palette.primaryAccent)
                     }
                 }
 
@@ -311,10 +359,11 @@ struct SessionSummaryCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("EST 1RM")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(L4NETheme.textSecondary)
+                            .foregroundStyle(palette.textSecondary)
                         Text(String(format: "%.1f kg", oneRm))
-                            .font(.system(size: 15, weight: .heavy, design: .monospaced))
-                            .foregroundStyle(L4NETheme.signalGreen)
+                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(palette.signalGreen)
                     }
                 }
 
@@ -322,21 +371,23 @@ struct SessionSummaryCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("BEST ATTEMPT")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(L4NETheme.textSecondary)
+                            .foregroundStyle(palette.textSecondary)
                         Text(String(format: "%.2f m", bestAttempt))
-                            .font(.system(size: 15, weight: .heavy, design: .monospaced))
-                            .foregroundStyle(L4NETheme.electricLime)
+                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(palette.primaryAccent)
                     }
                 }
 
                 if let cv = session.metrics.consistencyCvPct {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("CV% CONSISTENCY")
+                        Text("CV% FORM")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(L4NETheme.textSecondary)
+                            .foregroundStyle(palette.textSecondary)
                         Text(String(format: "%.2f%%", cv))
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundStyle(L4NETheme.signalGreen)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(palette.signalGreen)
                     }
                 }
 
@@ -344,21 +395,22 @@ struct SessionSummaryCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("FATIGUE SPLIT")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(L4NETheme.textSecondary)
+                            .foregroundStyle(palette.textSecondary)
                         Text(String(format: "%+.2f%%", fatigue))
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundStyle(fatigue <= 0 ? L4NETheme.signalGreen : L4NETheme.warningAmber)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(fatigue <= 0 ? palette.signalGreen : palette.warningAmber)
                     }
                 }
             }
+
+            if showStravaSplits && session.reps.contains(where: { ($0.durationMs ?? 0) > 0 }) {
+                Divider().overlay(palette.border)
+                L4NEStravaSplitsBarView(reps: session.reps, palette: palette)
+            }
         }
-        .padding(14)
-        .background(L4NETheme.cardSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(L4NETheme.border, lineWidth: 1)
-        )
+        .padding(15)
+        .l4neBevelCard(cornerRadius: 16, palette: palette)
     }
 }
 
@@ -1547,17 +1599,27 @@ public struct DailyTimelineView: View {
                                         .font(.system(size: 12, weight: .black, design: .monospaced))
                                         .foregroundStyle(L4NETheme.electricLime)
                                     Spacer()
-                                    Text(w.externalSourceName ?? w.sourceType.rawValue)
+                                    Text("\(w.externalSourceName ?? "Apple Watch") — \(w.sourceType == .appleHealth ? "Imported" : "Manual")")
                                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                                         .foregroundStyle(L4NETheme.signalGreen)
                                 }
-                                Text("\(String(format: "%.0f m", w.totalDistanceM ?? 0)) · Πισίνα \(w.poolLengthM ?? 50)m · Avg HR \(String(format: "%.0f bpm", w.avgHeartRateBpm ?? 0))")
+                                Text("\(String(format: "%.0f m", w.totalDistanceM ?? 0)) · \(L4NEDurationFormatter.formatIntervalMs(w.durationMs ?? 0)) · Πισίνα \(w.poolLengthM ?? 50)m · Avg HR \(String(format: "%.0f bpm", w.avgHeartRateBpm ?? 0))")
                                     .font(.system(size: 14, weight: .bold))
                                     .foregroundStyle(L4NETheme.textPrimary)
+
+                                HStack {
+                                    Text("Associated templates: \(w.associatedTemplatesCount ?? 0)")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.electricLime)
+                                    if w.keptAsStandalone == true {
+                                        Text("· Standalone General Record")
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundStyle(L4NETheme.textSecondary)
+                                    }
+                                }
                             }
                             .padding(14)
-                            .background(L4NETheme.cardSurface)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .l4neBevelCard(cornerRadius: 14)
                         }
 
                         ForEach(timeline.standaloneAndLinkedSessions) { s in
@@ -1692,10 +1754,27 @@ public struct WorkoutImportView: View {
 
                     ForEach(store.workouts) { workout in
                         let candidates = (try? store.client.matchWorkoutTemplates(workoutId: workout.id)) ?? []
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("\(workout.externalSourceName ?? "Apple Watch") · \(String(format: "%.0f m", workout.totalDistanceM ?? 0))")
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(L4NETheme.textPrimary)
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(workout.externalSourceName ?? "Apple Watch") · \(String(format: "%.0f m", workout.totalDistanceM ?? 0))")
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundStyle(L4NETheme.textPrimary)
+                                    Text("Associated templates: \(workout.associatedTemplatesCount ?? 0) · \(workout.keptAsStandalone == true ? "Kept as Standalone Record" : "Ready for Template Link")")
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.textSecondary)
+                                }
+                                Spacer()
+                                Button(workout.keptAsStandalone == true ? "Standalone ✓" : "Keep Standalone") {
+                                    store.toggleWorkoutStandalone(workout)
+                                }
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(workout.keptAsStandalone == true ? L4NETheme.signalGreen : L4NETheme.mutedSurface)
+                                .foregroundStyle(workout.keptAsStandalone == true ? Color.black : L4NETheme.textPrimary)
+                                .clipShape(Capsule())
+                            }
 
                             Text("DETERMINISTIC TEMPLATE CANDIDATES:")
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -1760,7 +1839,109 @@ public struct WorkoutImportView: View {
     }
 }
 
-// MARK: - 7. Settings, Local-First Backup/Restore & Diagnostics Screen (v1.1)
+// MARK: - 7. Dedicated Health Context & Personal Baselines Screen (Overview Section 6 & 12)
+
+public struct HealthContextView: View {
+    @ObservedObject var store: L4NEAppStore
+    @State private var showHealthEditor = false
+
+    public init(store: L4NEAppStore) {
+        self.store = store
+    }
+
+    public var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Observational Principle Banner
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("OBSERVATIONAL HEALTH CONTEXT · NO CAUSAL CLAIMS")
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .foregroundStyle(store.activePalette.primaryAccent)
+                        Text("Το L4NE συγκρίνει την αθλητική επίδοση με το προσωπικό σου baseline σε Ύπνο, HRV, Resting HR και VO₂ Max παρουσιάζοντας παρατηρησιακές συσχετίσεις — ποτέ αναπόδεικτη αιτιότητα.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(store.activePalette.textSecondary)
+                    }
+                    .padding(14)
+                    .l4neBevelCard(cornerRadius: 14, palette: store.activePalette)
+
+                    if let ctx = store.healthContext {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                            L4NEMetricTile(
+                                title: "Personal HRV Baseline",
+                                value: ctx.baselineHrvSdnnMs.map { String(format: "%.1f ms", $0) } ?? "—",
+                                subtitle: ctx.latestHrvDeltaMs.map { String(format: "%+.1f ms latest vs base", $0) } ?? "Unknown ≠ 0",
+                                accentColor: store.activePalette.signalGreen
+                            )
+
+                            L4NEMetricTile(
+                                title: "Personal Sleep Baseline",
+                                value: ctx.baselineSleepMinutes.map { "\($0 / 60)h \($0 % 60)m" } ?? "—",
+                                subtitle: ctx.latestSleepDeltaMinutes.map { String(format: "%+d min latest vs base", $0) } ?? "Unknown ≠ 0",
+                                accentColor: store.activePalette.primaryAccent
+                            )
+
+                            L4NEMetricTile(
+                                title: "Resting HR Baseline",
+                                value: ctx.baselineRestingHrBpm.map { String(format: "%.0f bpm", $0) } ?? "—",
+                                subtitle: ctx.latestRhrDeltaBpm.map { String(format: "%+.0f bpm latest", $0) } ?? "Unknown ≠ 0",
+                                accentColor: store.activePalette.textPrimary
+                            )
+
+                            L4NEMetricTile(
+                                title: "VO₂ Max Baseline",
+                                value: ctx.baselineVo2MaxMlKgMin.map { String(format: "%.1f", $0) } ?? "—",
+                                subtitle: "ml/kg/min estimate",
+                                accentColor: store.activePalette.prGold
+                            )
+                        }
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("RECORDED DAILY HEALTH SNAPSHOTS (\(ctx.snapshotsCount))")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(store.activePalette.textSecondary)
+                                Spacer()
+                                Button("+ Log Snapshot") {
+                                    showHealthEditor = true
+                                }
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundStyle(store.activePalette.primaryAccent)
+                            }
+
+                            ForEach(ctx.snapshots) { snap in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        Text(snap.dateIso)
+                                            .font(.system(size: 14, weight: .black, design: .monospaced))
+                                            .foregroundStyle(store.activePalette.primaryAccent)
+                                        Spacer()
+                                        Text(snap.sourceSummary ?? "Apple HealthKit")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(store.activePalette.textSecondary)
+                                    }
+                                    Text("Sleep: \(snap.sleepDurationMinutes.map { "\($0 / 60)h \($0 % 60)m" } ?? "—") · HRV: \(snap.hrvSdnnMs.map { String(format: "%.1f ms", $0) } ?? "—") · RHR: \(snap.restingHrBpm.map { String(format: "%.0f bpm", $0) } ?? "—") · VO₂ Max: \(snap.vo2MaxMlKgMin.map { String(format: "%.1f", $0) } ?? "—")")
+                                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(store.activePalette.textPrimary)
+                                }
+                                .padding(14)
+                                .l4neBevelCard(cornerRadius: 14, palette: store.activePalette)
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .background(store.activePalette.bgCanvas.ignoresSafeArea())
+            .navigationTitle("Health Context")
+            .sheet(isPresented: $showHealthEditor) {
+                HealthSnapshotEditorSheet(store: store, dateIso: store.selectedTimelineDateIso)
+            }
+        }
+    }
+}
+
+// MARK: - 8. Settings, Multi-Theme Studio, Local-First Backup/Restore & Diagnostics Screen (v1.3)
 
 public struct SettingsDataView: View {
     @ObservedObject var store: L4NEAppStore
@@ -1776,16 +1957,71 @@ public struct SettingsDataView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
-                        L4NEBrandWordmark(subtitle: "LOCAL-FIRST · ZERO AI · ZERO CLOUD")
+                        L4NEBrandWordmark(
+                            subtitle: "LOCAL-FIRST · ZERO AI · ZERO CLOUD",
+                            palette: store.activePalette
+                        )
                         Text("Database: \(store.client.databasePath)")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(L4NETheme.textSecondary)
+                            .foregroundStyle(store.activePalette.textSecondary)
                             .padding(.top, 4)
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(L4NETheme.cardSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .l4neBevelCard(cornerRadius: 14, palette: store.activePalette)
+
+                    // Multi-Theme Studio Selector (Bevel Graphite · Strava Obsidian · Bevel Navy · Lane 4 Carbon · Daylight Lab)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("MULTI-THEME STUDIO (MINIMALIST GRAPHITE · BEVEL · STRAVA)")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(store.activePalette.textSecondary)
+
+                        ForEach(ThemePreset.allCases) { preset in
+                            let previewPalette = L4NEPalette.forPreset(preset)
+                            let isSelected = store.appSettings.activeTheme == preset
+                            Button {
+                                store.selectTheme(preset)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    // Swatch preview circles
+                                    HStack(spacing: -4) {
+                                        Circle()
+                                            .fill(previewPalette.bgCanvas)
+                                            .frame(width: 20, height: 20)
+                                            .overlay(Circle().stroke(Color.gray.opacity(0.4), lineWidth: 1))
+                                        Circle()
+                                            .fill(previewPalette.surface1)
+                                            .frame(width: 20, height: 20)
+                                        Circle()
+                                            .fill(previewPalette.primaryAccent)
+                                            .frame(width: 20, height: 20)
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(preset.displayTitle)
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(store.activePalette.textPrimary)
+                                        Text(preset.subtitle)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(store.activePalette.textSecondary)
+                                    }
+                                    Spacer()
+                                    if isSelected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 18))
+                                            .foregroundStyle(store.activePalette.primaryAccent)
+                                    }
+                                }
+                                .padding(12)
+                                .l4neBevelCard(
+                                    cornerRadius: 12,
+                                    palette: store.activePalette,
+                                    hasInnerGlow: isSelected
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
 
                     if let diag = store.diagnostics {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {

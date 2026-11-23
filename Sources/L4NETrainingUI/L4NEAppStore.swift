@@ -4,18 +4,22 @@ import SwiftUI
 import L4NETrainingCore
 #endif
 
-/// Main Observable ViewModel (v1.1) coordinating local SQLite state through `L4NECoreClient`.
+/// Main Observable ViewModel (v1.3) coordinating local SQLite state, Multi-Theme presets,
+/// Bevel rings, and Strava activity feeds through `L4NECoreClient`.
 @MainActor
 public final class L4NEAppStore: ObservableObject {
     public let client: L4NECoreClient
     public let healthKitAdapter = L4NEHealthKitAdapter()
 
+    @Published public var appSettings: AppSettings = AppSettings()
+    @Published public var activePalette: L4NEPalette = .forPreset(.graphiteBevel)
     @Published public var templates: [TemplateWithVersion] = []
     @Published public var includeArchivedTemplates: Bool = false
     @Published public var selectedSportFilter: SportCategory? = nil
     @Published public var recentSessions: [SessionWithReps] = []
     @Published public var workouts: [Workout] = []
     @Published public var healthSnapshots: [DailyHealthSnapshot] = []
+    @Published public var healthContext: HealthContextSummary?
     @Published public var selectedTimelineDateIso: String = "2026-11-22"
     @Published public var currentTimeline: DailyTrainingTimeline?
     @Published public var diagnostics: DatabaseDiagnostics?
@@ -31,7 +35,7 @@ public final class L4NEAppStore: ObservableObject {
         } else {
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
                 ?? URL(fileURLWithPath: NSTemporaryDirectory())
-            resolvedPath = docs.appendingPathComponent("l4ne_training_v1_1.sqlite").path
+            resolvedPath = docs.appendingPathComponent("l4ne_training_v1_3.sqlite").path
         }
         self.client = L4NECoreClient(databasePath: resolvedPath)
         self.bootstrap()
@@ -53,13 +57,36 @@ public final class L4NEAppStore: ObservableObject {
 
     public func refreshAll() {
         do {
+            if let loadedSettings = try? client.getAppSettings() {
+                appSettings = loadedSettings
+                let pal = L4NEPalette.forPreset(loadedSettings.activeTheme)
+                L4NETheme.activePalette = pal
+                activePalette = pal
+            }
             templates = try client.listTemplates(includeArchived: includeArchivedTemplates)
             recentSessions = try client.listSessions(templateId: nil)
             workouts = try client.listWorkouts()
             healthSnapshots = try client.listHealthSnapshots()
+            healthContext = try? client.getHealthContextSummary()
             currentTimeline = try client.getDailyTimeline(dateIso: selectedTimelineDateIso)
             diagnostics = try client.getDatabaseDiagnostics()
             lastErrorMessage = nil
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func selectTheme(_ preset: ThemePreset) {
+        var updated = appSettings
+        updated.activeTheme = preset
+        updated.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+        do {
+            let saved = try client.updateAppSettings(updated)
+            appSettings = saved
+            let pal = L4NEPalette.forPreset(saved.activeTheme)
+            L4NETheme.activePalette = pal
+            activePalette = pal
+            lastStatusBanner = "Ενεργοποιήθηκε το theme '\(preset.displayTitle)'."
         } catch {
             lastErrorMessage = error.localizedDescription
         }
@@ -126,6 +153,19 @@ public final class L4NEAppStore: ObservableObject {
             lastStatusBanner = workoutId != nil
                 ? "Το session συνδέθηκε με το Workout."
                 : "Αφαιρέθηκε η σύνδεση με το Workout."
+            refreshAll()
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func toggleWorkoutStandalone(_ workout: Workout) {
+        do {
+            let nextState = !(workout.keptAsStandalone ?? false)
+            _ = try client.setWorkoutStandalone(workoutId: workout.id, keptAsStandalone: nextState)
+            lastStatusBanner = nextState
+                ? "Το Workout κρατήθηκε ως γενική καταγραφή (Standalone)."
+                : "Το Workout είναι διαθέσιμο για αντιστοίχιση με Templates."
             refreshAll()
         } catch {
             lastErrorMessage = error.localizedDescription

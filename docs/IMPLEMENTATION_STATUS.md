@@ -1,12 +1,14 @@
-# Implementation Status — `L4NE Training` v1.2.0
+# Implementation Status — `L4NE Training` v1.3.0
 
 Updated: 2026-11-23. Base repository: `https://github.com/train-cell/L4NE-Performance` (`main` branch).
 
-This table records the exact implementation and verification state of every subsystem in this checkout. Local automated software verification (`./scripts/verify.sh`) has been executed and passed 100%; physical iPhone poolside testing and Android device NDK packaging remain separate hardware acceptance steps ([Physical-acceptance.md](Physical-acceptance.md)).
+This table records the exact implementation and verification state of every subsystem in this checkout. Local automated software verification (`./scripts/verify.sh`) has been executed and passed 100% (7/7 Rust tests, 8/8 Swift 6 + Rust FFI full-stack gates, native `L4NETrainingApp` binary compilation, and `L4NETraining.xcodeproj` generation); physical iPhone poolside testing and Android device NDK packaging remain separate hardware acceptance steps ([Physical-acceptance.md](Physical-acceptance.md)).
 
 | Feature / Subsystem | Source Path(s) | Current Status & Verification Evidence |
 | :--- | :--- | :--- |
-| **SQLite Schema v3 & Migrations (`v1 → v2 → v3`)** | `crates/l4ne-core/src/db.rs` | **Implemented & Verified.** Bundled SQLite 3 (`rusqlite`), foreign keys enforced, idempotent `ALTER TABLE` upgrades tested in Rust and Swift FFI gates. |
+| **SQLite Schema v4 & Migrations (`v1 → v4`)** | `crates/l4ne-core/src/db.rs` | **Implemented & Verified.** Bundled SQLite 3 (`rusqlite`), foreign keys enforced, `app_settings` table & idempotent `ALTER TABLE` upgrades tested in Rust and Swift FFI gates. |
+| **Minimalist Graphite, Bevel & Strava Multi-Theme Engine (v1.3)** | `L4NETheme.swift`, `L4NEComposeApp.kt`, `db.rs` | **Implemented & Verified.** 5 persisted themes (`graphite_bevel`, `strava_obsidian`, `bevel_navy`, `lane4_carbon`, `minimal_alabaster`), Bevel concentric rings (`L4NEBevelRingsCard`), tactile bevel cards, and Strava horizontal split pace bars (`L4NEStravaSplitsBarView`). |
+| **Dedicated Screen 7 (`HealthContextView`) & Personal Baselines** | `analytics.rs`, `L4NEScreens.swift` | **Implemented & Verified.** Computes deterministic personal rolling baselines & deltas for Sleep, HRV SDNN, Resting HR, and VO₂ Max obeying `"Unknown != 0"` and observational correlation rules. |
 | **Homogeneous, Pyramid & Compound Slot Expansion** | `crates/l4ne-core/src/engine.rs` | **Implemented & Verified.** Deterministically flattens `rounds × blocks` up to 500 slots (`8×50m`, `50-100-150-100-50m`, `4×[2×50+100]`). |
 | **Immutable SHA-256 Protocol Versioning (`v1..vN`)** | `crates/l4ne-core/src/engine.rs`, `db.rs` | **Implemented & Verified.** Modifying physiological fields mints `v + 1`; historical sessions remain bound to their execution version. |
 | **Macrocycle / Folder Organization (v1.2)** | `crates/l4ne-core/src/db.rs`, `L4NEScreens.swift` | **Implemented & Verified.** `folder_tag` persisted in `templates`, displayed in library cards, and editable in `TemplateBuilderSheet`. |

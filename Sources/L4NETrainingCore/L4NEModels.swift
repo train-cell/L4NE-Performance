@@ -91,6 +91,62 @@ public enum WorkoutSourceType: String, Codable, CaseIterable, Sendable {
     case healthConnect = "health_connect"
 }
 
+/// Multi-Theme Presets (v1.3 Minimalist Graphite / Bevel / Strava Design System).
+public enum ThemePreset: String, Codable, CaseIterable, Identifiable, Sendable {
+    case graphiteBevel = "graphite_bevel"
+    case stravaObsidian = "strava_obsidian"
+    case bevelNavy = "bevel_navy"
+    case lane4Carbon = "lane4_carbon"
+    case minimalAlabaster = "minimal_alabaster"
+
+    public var id: String { rawValue }
+
+    public var displayTitle: String {
+        switch self {
+        case .graphiteBevel: return "Graphite Bevel (Default)"
+        case .stravaObsidian: return "Strava Athletic Obsidian"
+        case .bevelNavy: return "LoggedIn Bevel Navy"
+        case .lane4Carbon: return "L4NE Pure Carbon & Lime"
+        case .minimalAlabaster: return "Minimalist Lab Daylight"
+        }
+    }
+
+    public var subtitle: String {
+        switch self {
+        case .graphiteBevel: return "Matte Titanium Graphite · Top-Edge Specular Bevel · Electric Lime"
+        case .stravaObsidian: return "Obsidian Slate · Signal Orange #FC4C02 · Gold PR Medals"
+        case .bevelNavy: return "Deep Navy #0F172A · Tactile Bevel Surfaces · Electric Cyan #38BDF8"
+        case .lane4Carbon: return "OLED Black #07080A · High-Voltage Lime · Poolside Contrast"
+        case .minimalAlabaster: return "Clean Alabaster #F4F5F7 · Pure White Cards · Deep Graphite Ink"
+        }
+    }
+}
+
+public struct AppSettings: Codable, Equatable, Sendable {
+    public var activeTheme: ThemePreset
+    public var defaultPoolLengthM: Int
+    public var preferredSport: SportCategory
+    public var hapticsEnabled: Bool
+    public var autoAdvanceSendoff: Bool
+    public var updatedAtMs: Int64
+
+    public init(
+        activeTheme: ThemePreset = .graphiteBevel,
+        defaultPoolLengthM: Int = 50,
+        preferredSport: SportCategory = .finswimming,
+        hapticsEnabled: Bool = true,
+        autoAdvanceSendoff: Bool = true,
+        updatedAtMs: Int64 = 1_795_356_000_000
+    ) {
+        self.activeTheme = activeTheme
+        self.defaultPoolLengthM = defaultPoolLengthM
+        self.preferredSport = preferredSport
+        self.hapticsEnabled = hapticsEnabled
+        self.autoAdvanceSendoff = autoAdvanceSendoff
+        self.updatedAtMs = updatedAtMs
+    }
+}
+
 // MARK: - Template & Protocol Versioning Models
 
 public struct TemplateBlockInput: Codable, Equatable, Sendable {
@@ -447,6 +503,10 @@ public struct Workout: Codable, Equatable, Identifiable, Sendable {
     public let activeEnergyKcal: Double?
     public let avgHeartRateBpm: Double?
     public let maxHeartRateBpm: Double?
+    public let hasRoute: Bool?
+    public let routeSummary: String?
+    public let keptAsStandalone: Bool?
+    public let associatedTemplatesCount: Int?
     public let lapDurationsMs: [Int64]?
     public let notes: String?
     public let createdAtMs: Int64
@@ -465,6 +525,8 @@ public struct ImportWorkoutInput: Codable, Sendable {
     public let activeEnergyKcal: Double?
     public let avgHeartRateBpm: Double?
     public let maxHeartRateBpm: Double?
+    public let hasRoute: Bool
+    public let routeSummary: String?
     public let lapDurationsMs: [Int64]
     public let notes: String?
 
@@ -481,6 +543,8 @@ public struct ImportWorkoutInput: Codable, Sendable {
         activeEnergyKcal: Double? = nil,
         avgHeartRateBpm: Double? = nil,
         maxHeartRateBpm: Double? = nil,
+        hasRoute: Bool = false,
+        routeSummary: String? = nil,
         lapDurationsMs: [Int64] = [],
         notes: String? = nil
     ) {
@@ -496,6 +560,8 @@ public struct ImportWorkoutInput: Codable, Sendable {
         self.activeEnergyKcal = activeEnergyKcal
         self.avgHeartRateBpm = avgHeartRateBpm
         self.maxHeartRateBpm = maxHeartRateBpm
+        self.hasRoute = hasRoute
+        self.routeSummary = routeSummary
         self.lapDurationsMs = lapDurationsMs
         self.notes = notes
     }
@@ -540,6 +606,21 @@ public struct DailyHealthSnapshot: Codable, Equatable, Identifiable, Sendable {
         self.sourceSummary = sourceSummary
         self.capturedAtMs = capturedAtMs
     }
+}
+
+public struct HealthContextSummary: Codable, Equatable, Sendable {
+    public let snapshotsCount: Int
+    public let baselineSleepMinutes: Int?
+    public let baselineHrvSdnnMs: Double?
+    public let baselineRestingHrBpm: Double?
+    public let baselineVo2MaxMlKgMin: Double?
+    public let latestSnapshot: DailyHealthSnapshot?
+    public let latestSleepDeltaMinutes: Int?
+    public let latestHrvDeltaMs: Double?
+    public let latestRhrDeltaBpm: Double?
+    public let bevelSleepRingPct: Double?
+    public let bevelRecoveryRingPct: Double?
+    public let snapshots: [DailyHealthSnapshot]
 }
 
 public struct DailyTrainingTimeline: Codable, Equatable, Sendable {

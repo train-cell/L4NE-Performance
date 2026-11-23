@@ -7,9 +7,9 @@
 //! - Gym Strength Training (`weight_reps`: total tonnage kg, Epley estimated 1RM kg, average RPE)
 
 use crate::models::{
-    DailyHealthSnapshot, ExpectedRepSlot, RepRecord, RestMode, SessionComparison,
-    SessionHealthCorrelationNote, SessionSummaryMetrics, SessionWithReps, SlotDelta,
-    TemplateAnalyticsReport, TemplateWithVersion,
+    DailyHealthSnapshot, ExpectedRepSlot, HealthContextSummary, RepRecord, RestMode,
+    SessionComparison, SessionHealthCorrelationNote, SessionSummaryMetrics, SessionWithReps,
+    SlotDelta, TemplateAnalyticsReport, TemplateWithVersion,
 };
 use std::collections::HashMap;
 
@@ -484,5 +484,124 @@ pub fn compute_template_analytics(
         latest_vs_previous,
         latest_vs_personal_best,
         health_correlations,
+    }
+}
+
+/// Computes the deterministic `HealthContextSummary` (Screen 7 — Health Context & Bevel Rings)
+/// from stored `DailyHealthSnapshot` rows ordered by `date_iso DESC`.
+/// Obeys the invariant "Unknown != 0": missing metrics remain `None` rather than `0.0`.
+pub fn compute_health_context_summary(
+    snapshots_desc: &[DailyHealthSnapshot],
+) -> HealthContextSummary {
+    let sleep_vals: Vec<i32> = snapshots_desc
+        .iter()
+        .filter_map(|s| s.sleep_duration_minutes)
+        .filter(|&v| v > 0)
+        .collect();
+    let hrv_vals: Vec<f64> = snapshots_desc
+        .iter()
+        .filter_map(|s| s.hrv_sdnn_ms)
+        .filter(|&v| v > 0.0 && v.is_finite())
+        .collect();
+    let rhr_vals: Vec<f64> = snapshots_desc
+        .iter()
+        .filter_map(|s| s.resting_hr_bpm)
+        .filter(|&v| v > 0.0 && v.is_finite())
+        .collect();
+    let vo2_vals: Vec<f64> = snapshots_desc
+        .iter()
+        .filter_map(|s| s.vo2_max_ml_kg_min)
+        .filter(|&v| v > 0.0 && v.is_finite())
+        .collect();
+
+    let baseline_sleep_minutes = if !sleep_vals.is_empty() {
+        let sum: i32 = sleep_vals.iter().sum();
+        Some((sum + (sleep_vals.len() as i32 / 2)) / (sleep_vals.len() as i32))
+    } else {
+        None
+    };
+
+    let baseline_hrv_sdnn_ms = if !hrv_vals.is_empty() {
+        Some(round2(
+            hrv_vals.iter().sum::<f64>() / (hrv_vals.len() as f64),
+        ))
+    } else {
+        None
+    };
+
+    let baseline_resting_hr_bpm = if !rhr_vals.is_empty() {
+        Some(round2(
+            rhr_vals.iter().sum::<f64>() / (rhr_vals.len() as f64),
+        ))
+    } else {
+        None
+    };
+
+    let baseline_vo2_max_ml_kg_min = if !vo2_vals.is_empty() {
+        Some(round2(
+            vo2_vals.iter().sum::<f64>() / (vo2_vals.len() as f64),
+        ))
+    } else {
+        None
+    };
+
+    let latest = snapshots_desc.first().cloned();
+
+    let latest_sleep_delta_minutes = match (
+        latest.as_ref().and_then(|l| l.sleep_duration_minutes),
+        baseline_sleep_minutes,
+    ) {
+        (Some(cur), Some(base)) => Some(cur - base),
+        _ => None,
+    };
+
+    let latest_hrv_delta_ms = match (
+        latest.as_ref().and_then(|l| l.hrv_sdnn_ms),
+        baseline_hrv_sdnn_ms,
+    ) {
+        (Some(cur), Some(base)) => Some(round2(cur - base)),
+        _ => None,
+    };
+
+    let latest_rhr_delta_bpm = match (
+        latest.as_ref().and_then(|l| l.resting_hr_bpm),
+        baseline_resting_hr_bpm,
+    ) {
+        (Some(cur), Some(base)) => Some(round2(cur - base)),
+        _ => None,
+    };
+
+    // Bevel Sleep Ring %: relative to 480 min (8h) reference, clamped to 0..=100%
+    let bevel_sleep_ring_pct = latest
+        .as_ref()
+        .and_then(|l| l.sleep_duration_minutes)
+        .filter(|&m| m > 0)
+        .map(|m| round2(((m as f64 / 480.0) * 100.0).clamp(0.0, 100.0)));
+
+    // Bevel Recovery Context Ring %: relative to personal HRV baseline (75% at baseline, up to 100% when +33% above baseline)
+    let bevel_recovery_ring_pct = match (
+        latest.as_ref().and_then(|l| l.hrv_sdnn_ms),
+        baseline_hrv_sdnn_ms,
+    ) {
+        (Some(cur), Some(base)) if base > 0.0 && cur > 0.0 => {
+            let ratio = cur / base;
+            Some(round2((ratio * 78.0).clamp(10.0, 100.0)))
+        }
+        _ => None,
+    };
+
+    HealthContextSummary {
+        snapshots_count: snapshots_desc.len(),
+        baseline_sleep_minutes,
+        baseline_hrv_sdnn_ms,
+        baseline_resting_hr_bpm,
+        baseline_vo2_max_ml_kg_min,
+        latest_snapshot: latest,
+        latest_sleep_delta_minutes,
+        latest_hrv_delta_ms,
+        latest_rhr_delta_bpm,
+        bevel_sleep_ring_pct,
+        bevel_recovery_ring_pct,
+        snapshots: snapshots_desc.to_vec(),
     }
 }

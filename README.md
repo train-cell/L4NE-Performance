@@ -1,11 +1,11 @@
-# L4NE Performance — L4NE Training (v1.2.0)
+# L4NE Performance — L4NE Training (v1.3.0)
 
 > **SPORTS TECHNOLOGY · TRAINING · ANALYTICS**  
 > **BUILT TO OUTPERFORM.**
 
 **L4NE Training** is a local-first, 100% deterministic athletic training protocol logger, live poolside companion, and multi-sport performance analytics engine created under the **L4NE Performance** brand (inspired by **Lane 4** — traditionally the fastest lane in competitive swimming and finswimming).
 
-Athletes define reusable training protocols (**Templates** — from homogeneous interval sets like `8 × 50m Surface Monofin @ 30s rest` to complex **Pyramids** `50-100-150-100-50m`, **Multi-Round Send-Off Compound Sets** `4 × [2×50m @ 0:50 + 1×100m @ 1:40]`, **Track Sprints**, **Field Jumps/Throws**, and **Gym Strength Protocols**), organize them by macrocycle folder tags, record executions either via the **Post-Workout Athletic Centisecond Numpad** or the **Live Poolside Companion Timer** (monotonic stopwatch + intra-rep `LAP SPLIT` capture + rest & send-off departure countdown), integrate with **Apple HealthKit** (Read, deterministic matching, Watch lap auto-prefill, and `HKWorkout` Write), and measure true physical evolution over time.
+Featuring a **Minimalist Graphite, Bevel & Strava-inspired Multi-Theme UI** (with 5 persisted themes: *Graphite Bevel*, *Strava Athletic Obsidian*, *LoggedIn Bevel Navy*, *L4NE Pure Carbon & Lime*, and *Minimalist Lab Daylight*), triple concentric **Bevel Performance & Recovery Rings**, and **Strava Horizontal Split Pace Bar Cards**, athletes define reusable training protocols (**Templates** — from homogeneous interval sets like `8 × 50m Surface Monofin @ 30s rest`, `6 × 100m @ 60s rest`, `6 × 100m @ 30s rest` to complex **Pyramids** `50-100-150-100-50m`, **Multi-Round Send-Off Compound Sets** `4 × [2×50m @ 0:50 + 1×100m @ 1:40]`, **Track Sprints**, **Field Jumps/Throws**, and **Gym Strength Protocols**), record executions via the **Athletic Centisecond Numpad** or the **Live Poolside Companion Timer**, integrate with **Apple HealthKit**, and measure true physical evolution over time.
 
 **No AI. No LLMs. No unnecessary cloud. Just training data, deterministic mathematics, and measurable progress.**
 

@@ -4,8 +4,8 @@ use crate::analytics::compare_sessions;
 use crate::db::L4neDatabase;
 use crate::engine::{evaluate_live_timer_tick, parse_athletic_numpad};
 use crate::models::{
-    CoreError, CreateTemplateInput, DailyHealthSnapshot, ImportWorkoutInput, LiveTimerTickInput,
-    LogSessionInput, UpdateTemplateProtocolInput,
+    AppSettings, CoreError, CreateTemplateInput, DailyHealthSnapshot, ImportWorkoutInput,
+    LiveTimerTickInput, LogSessionInput, UpdateTemplateProtocolInput,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -13,7 +13,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const VERSION_CSTR: &[u8] = b"1.2.0\0";
+const VERSION_CSTR: &[u8] = b"1.3.0\0";
 
 fn current_epoch_ms() -> i64 {
     SystemTime::now()
@@ -80,6 +80,10 @@ pub enum FfiCommand {
         payload: ImportWorkoutInput,
         now_ms: Option<i64>,
     },
+    SetWorkoutStandalone {
+        workout_id: String,
+        kept_as_standalone: bool,
+    },
     ListWorkouts,
     MatchWorkoutTemplates {
         workout_id: String,
@@ -92,6 +96,11 @@ pub enum FfiCommand {
         payload: DailyHealthSnapshot,
     },
     ListHealthSnapshots,
+    HealthContextSummary,
+    GetAppSettings,
+    UpdateAppSettings {
+        payload: AppSettings,
+    },
     DailyTimeline {
         date_iso: String,
     },
@@ -240,6 +249,12 @@ pub fn execute_command_json_str(db_path: &str, request_json: &str) -> String {
         FfiCommand::ImportWorkout { payload, now_ms } => Ok(serde_json::to_value(
             db.import_workout(&payload, now_ms.unwrap_or_else(current_epoch_ms))?,
         )?),
+        FfiCommand::SetWorkoutStandalone {
+            workout_id,
+            kept_as_standalone,
+        } => Ok(serde_json::to_value(
+            db.set_workout_standalone(&workout_id, kept_as_standalone)?,
+        )?),
         FfiCommand::ListWorkouts => Ok(serde_json::to_value(db.list_workouts()?)?),
         FfiCommand::MatchWorkoutTemplates { workout_id } => Ok(serde_json::to_value(
             db.match_templates_for_workout(&workout_id)?,
@@ -254,6 +269,13 @@ pub fn execute_command_json_str(db_path: &str, request_json: &str) -> String {
             Ok(serde_json::to_value(db.upsert_health_snapshot(&payload)?)?)
         }
         FfiCommand::ListHealthSnapshots => Ok(serde_json::to_value(db.list_health_snapshots()?)?),
+        FfiCommand::HealthContextSummary => {
+            Ok(serde_json::to_value(db.get_health_context_summary()?)?)
+        }
+        FfiCommand::GetAppSettings => Ok(serde_json::to_value(db.get_app_settings()?)?),
+        FfiCommand::UpdateAppSettings { payload } => {
+            Ok(serde_json::to_value(db.update_app_settings(&payload)?)?)
+        }
         FfiCommand::DailyTimeline { date_iso } => {
             Ok(serde_json::to_value(db.get_daily_timeline(&date_iso)?)?)
         }
@@ -309,7 +331,7 @@ pub unsafe extern "C" fn l4ne_init_database_json(
         Ok(json!({
             "seeded": seeded,
             "templates_count": templates.len(),
-            "engine_version": "1.2.0"
+            "engine_version": "1.3.0"
         }))
     })();
 

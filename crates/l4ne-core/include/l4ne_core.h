@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 /**
- * Returns the semantic version of the L4NE Core Rust engine ("1.2.0", static string, do not free).
+ * Returns the semantic version of the L4NE Core Rust engine ("1.3.0", static string, do not free).
  */
 const char* l4ne_core_version(void);
 

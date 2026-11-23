@@ -2,6 +2,33 @@
 
 All notable changes to **L4NE Performance (`L4NE Training`)** are documented in this file.
 
+## 2026-11-23 — v1.3.0: Minimalist Graphite / Bevel / Strava Multi-Theme System, Bevel Rings, Strava Split Bars & Screen 7 Health Context
+
+- **Multi-Theme Engine (`ThemePreset` & `app_settings` in SQLite Schema v4):**
+  - Added 5 persisted themes across Rust (`l4ne-core`), iOS/macOS (`L4NEPalette` in `L4NETheme.swift`), and Android (`L4NEAndroidTheme` in `L4NEComposeApp.kt`):
+    1. `graphite_bevel` (*Graphite Bevel* — Default minimalist titanium graphite with top-edge specular bevel cards & Electric Lime).
+    2. `strava_obsidian` (*Strava Athletic Obsidian* — Obsidian slate with Signal Orange `#FC4C02` & Gold PR medals).
+    3. `bevel_navy` (*LoggedIn Bevel Navy* — Faithful transfer of the `LoggedInTheme` `#0F172A` / `#16213A` palette with Electric Cyan `#38BDF8` & Amber `#EAB308`).
+    4. `lane4_carbon` (*L4NE Pure Carbon & Lime* — High-contrast OLED black `#060709` for wet poolside legibility).
+    5. `minimal_alabaster` (*Minimalist Lab Daylight* — Clean alabaster light mode `#F3F4F6` / `#FFFFFF` with deep graphite ink).
+- **Bevel Concentric Rings Cockpit (`L4NEBevelRingsCard`) & Tactile Modifiers:**
+  - Ported the triple concentric Bevel ring geometry (`Recessed Disc + Bezel Stefani Lip + Volume Load / Protocol Consistency / Recovery Context Rings`) and `.l4neBevelCard` / `L4NETactileBevelButtonStyle` spring modifiers.
+  - Enforced the `"Unknown != 0"` invariant (`Option<f64>` renders an empty recessed track when HealthKit samples are absent).
+- **Strava-Inspired Activity Feed Cards & Horizontal Split Pace Bars (`L4NEStravaSplitsBarView`):**
+  - Every session card now displays a Strava 3-column hero metrics strip, `NEG SPLIT` and `HK EXPORTED` badges, and horizontal velocity bars for each repetition highlighting the fastest rep with a Gold Medal (`medal.fill`).
+- **Dedicated Screen 7 (`HealthContextView`) & Personal Recovery Baselines (`compute_health_context_summary`):**
+  - Computes deterministic personal rolling baselines and latest deltas for Sleep duration, HRV SDNN, Resting Heart Rate, and VO₂ Max with strictly observational correlation notes.
+- **Complete Overview Examples A, B, C & 7-Step Workout Import Standalone Option:**
+  - Seeded all 3 explicit template protocols from Overview Section 3 (`8×50m — 30s rest, monofin`, `6×100m — 60s rest`, `6×100m — 30s rest`) plus Pyramid (`50-100-150-100-50m`) and Compound Send-Off (`4×[2×50+100]`).
+  - Added `set_workout_standalone` (`Keep Standalone`) and live `associated_templates_count` (`Associated templates: N`) on imported workouts.
+  - Added `INFOPLIST_KEY_NSHealthShareUsageDescription` and `INFOPLIST_KEY_NSHealthUpdateUsageDescription` to `L4NETraining.xcodeproj`.
+- **Verification:**
+  - Rust Core unit & integration suite: **7/7 PASS** (0 warnings).
+  - Swift 6 + Rust C-FFI Full-Stack Verification Runner (`L4NETestRunner`): **8/8 GATES PASS (100%)**.
+  - Native `L4NETrainingApp` executable compilation & `L4NETraining.xcodeproj` generation: **PASS**.
+
+---
+
 ## 2026-11-23 — v1.2.0: Macrocycle Folders, Intra-Rep Lap Splits, Watch Lap Auto-Prefill & Data Contract
 
 - **SQLite Schema v3 & Resilient Migration (`crates/l4ne-core/src/db.rs`):**

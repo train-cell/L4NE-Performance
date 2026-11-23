@@ -275,6 +275,16 @@ public final class L4NECoreClient: @unchecked Sendable {
         return try execute(Request(payload: input, nowMs: nowMs))
     }
 
+    /// Step 7 of Import Flow: Marks an imported workout as explicitly kept as a general standalone record.
+    public func setWorkoutStandalone(workoutId: String, keptAsStandalone: Bool) throws -> Workout {
+        struct Request: Encodable {
+            let action = "set_workout_standalone"
+            let workoutId: String
+            let keptAsStandalone: Bool
+        }
+        return try execute(Request(workoutId: workoutId, keptAsStandalone: keptAsStandalone))
+    }
+
     /// Lists all imported and manual workouts.
     public func listWorkouts() throws -> [Workout] {
         struct Request: Encodable {
@@ -318,6 +328,32 @@ public final class L4NECoreClient: @unchecked Sendable {
             let action = "list_health_snapshots"
         }
         return try execute(Request())
+    }
+
+    /// Fetches the deterministic `HealthContextSummary` (Personal Baselines + Bevel Recovery/Sleep Rings).
+    public func getHealthContextSummary() throws -> HealthContextSummary {
+        struct Request: Encodable {
+            let action = "health_context_summary"
+        }
+        return try execute(Request())
+    }
+
+    /// Reads persisted `AppSettings` (active Multi-Theme preset, default pool length, preferred sport).
+    public func getAppSettings() throws -> AppSettings {
+        struct Request: Encodable {
+            let action = "get_app_settings"
+        }
+        return try execute(Request())
+    }
+
+    /// Updates persisted `AppSettings` in SQLite.
+    @discardableResult
+    public func updateAppSettings(_ settings: AppSettings) throws -> AppSettings {
+        struct Request: Encodable {
+            let action = "update_app_settings"
+            let payload: AppSettings
+        }
+        return try execute(Request(payload: settings))
     }
 
     /// Fetches the unified Daily Training Timeline for a specific `YYYY-MM-DD`.

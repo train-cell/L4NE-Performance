@@ -19,14 +19,14 @@ final class L4NETrainingCoreTests: XCTestCase {
     }
 
     func testEngineVersionV11AndDiagnostics() throws {
-        XCTAssertEqual(L4NECoreClient.engineVersion, "1.2.0")
+        XCTAssertEqual(L4NECoreClient.engineVersion, "1.3.0")
         let initRes = try client.initializeDatabase(seedDemoIfEmpty: true)
         XCTAssertTrue(initRes.seeded)
-        XCTAssertEqual(initRes.templatesCount, 3)
+        XCTAssertEqual(initRes.templatesCount, 5)
 
         let diag = try client.getDatabaseDiagnostics()
-        XCTAssertEqual(diag.schemaVersion, 3)
-        XCTAssertEqual(diag.templatesCount, 3)
+        XCTAssertEqual(diag.schemaVersion, 4)
+        XCTAssertEqual(diag.templatesCount, 5)
         XCTAssertEqual(diag.sessionsCount, 4)
     }
 
@@ -55,7 +55,7 @@ final class L4NETrainingCoreTests: XCTestCase {
         let restoreClient = L4NECoreClient(databasePath: restorePath)
         _ = try restoreClient.initializeDatabase(seedDemoIfEmpty: false)
         let res = try restoreClient.importBackupJSON(backupJson)
-        XCTAssertEqual(res.templatesRestored, 3)
+        XCTAssertEqual(res.templatesRestored, 5)
         XCTAssertEqual(res.sessionsRestored, 4)
     }
 }

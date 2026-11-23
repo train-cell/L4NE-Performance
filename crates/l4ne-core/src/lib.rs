@@ -25,9 +25,9 @@ mod tests {
     };
     use crate::ffi::execute_command_json_str;
     use crate::models::{
-        CoreError, CreateTemplateInput, EnvironmentType, ImportWorkoutInput, LiveTimerTickInput,
-        LogSessionInput, RecordKind, RepInput, RestMode, SportCategory, TemplateBlockInput,
-        UpdateTemplateProtocolInput, WorkoutSourceType,
+        AppSettings, CoreError, CreateTemplateInput, EnvironmentType, ImportWorkoutInput,
+        LiveTimerTickInput, LogSessionInput, RecordKind, RepInput, RestMode, SportCategory,
+        TemplateBlockInput, ThemePreset, UpdateTemplateProtocolInput, WorkoutSourceType,
     };
 
     #[test]
@@ -412,7 +412,7 @@ mod tests {
 
         let mut db2 = L4neDatabase::open(":memory:").unwrap();
         let restore_res = db2.import_backup_json(&backup_json).unwrap();
-        assert_eq!(restore_res.templates_restored, 3);
+        assert_eq!(restore_res.templates_restored, 5);
         assert_eq!(restore_res.workouts_restored, 1);
         assert_eq!(restore_res.sessions_restored, 4);
         assert_eq!(restore_res.health_snapshots_restored, 2);
@@ -439,6 +439,8 @@ mod tests {
                     active_energy_kcal: None,
                     avg_heart_rate_bpm: None,
                     max_heart_rate_bpm: None,
+                    has_route: false,
+                    route_summary: None,
                     lap_durations_ms: vec![],
                     notes: None,
                 },
@@ -449,23 +451,49 @@ mod tests {
 
         // v1.2: Verify Apple Watch lap segments auto-prefill for both Homogeneous (8x50m) and Pyramid (50-100-150-100-50m)!
         let workouts = db1.list_workouts().unwrap();
+        assert_eq!(workouts[0].associated_templates_count, 2);
         let templates = db1.list_templates().unwrap();
+        assert_eq!(templates.len(), 5);
         let pyramid_tpl = templates
             .iter()
             .find(|t| t.name.contains("Pyramid"))
             .unwrap();
-        // Pyramid requires 1 + 2 + 3 + 2 + 1 = 9 laps of 50m; with 8 laps in the seeded workout, it prefills the first 4 slots (50, 100, 150, 100)!
         let prefilled_pyr = db1
             .prefill_reps_from_workout_laps(&workouts[0].id, &pyramid_tpl.active_version.id)
             .unwrap();
         assert_eq!(prefilled_pyr.len(), 4);
-        assert_eq!(prefilled_pyr[0].duration_ms, Some(18_200)); // 50m (1 lap)
-        assert_eq!(prefilled_pyr[1].duration_ms, Some(18_350 + 18_400)); // 100m (2 laps summed)
-        assert_eq!(prefilled_pyr[1].splits_ms, vec![18_350, 18_400]); // intermediate 50m splits preserved!
+        assert_eq!(prefilled_pyr[0].duration_ms, Some(18_200));
+        assert_eq!(prefilled_pyr[1].duration_ms, Some(18_350 + 18_400));
+        assert_eq!(prefilled_pyr[1].splits_ms, vec![18_350, 18_400]);
         assert_eq!(
             prefilled_pyr[2].duration_ms,
             Some(18_300 + 18_250 + 18_300)
-        ); // 150m (3 laps summed)
+        );
+
+        // v1.3: Verify Multi-Theme AppSettings persistence & Health Context Personal Baseline Summary
+        let default_settings = db1.get_app_settings().unwrap();
+        assert_eq!(default_settings.active_theme, ThemePreset::GraphiteBevel);
+        let updated_settings = db1
+            .update_app_settings(&AppSettings {
+                active_theme: ThemePreset::StravaObsidian,
+                default_pool_length_m: 25,
+                preferred_sport: SportCategory::Swimming,
+                haptics_enabled: true,
+                auto_advance_sendoff: false,
+                updated_at_ms: 1_795_600_000_000,
+            })
+            .unwrap();
+        assert_eq!(updated_settings.active_theme, ThemePreset::StravaObsidian);
+        assert_eq!(updated_settings.default_pool_length_m, 25);
+
+        let health_ctx = db1.get_health_context_summary().unwrap();
+        assert_eq!(health_ctx.snapshots_count, 2);
+        assert!(health_ctx.baseline_hrv_sdnn_ms.unwrap() > 60.0);
+        assert!(health_ctx.bevel_recovery_ring_pct.unwrap() > 80.0);
+        assert!(health_ctx.bevel_sleep_ring_pct.unwrap() > 95.0);
+
+        let standalone_w = db1.set_workout_standalone(&workouts[0].id, true).unwrap();
+        assert!(standalone_w.kept_as_standalone);
 
         // v1.2: Verify fail-closed backup restore rejects unsupported schema_version
         let bad_schema = r#"{"schema_version":99,"exported_at_ms":0,"templates":[],"workouts":[],"sessions":[],"health_snapshots":[]}"#;

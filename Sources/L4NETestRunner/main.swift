@@ -24,10 +24,10 @@ struct L4NETestRunner {
     }
 
     static func main() throws {
-        print("⚡ L4NE Performance — v1.2.0 Full-Stack Swift 6 + Rust FFI Verification Suite")
+        print("⚡ L4NE Performance — v1.3.0 Full-Stack Swift 6 + Rust FFI Verification Suite")
         let tempDir = FileManager.default.temporaryDirectory
-        let dbPath = tempDir.appendingPathComponent("l4ne_verify_v12_\(UUID().uuidString).sqlite").path
-        let restoreDbPath = tempDir.appendingPathComponent("l4ne_restore_v12_\(UUID().uuidString).sqlite").path
+        let dbPath = tempDir.appendingPathComponent("l4ne_verify_v13_\(UUID().uuidString).sqlite").path
+        let restoreDbPath = tempDir.appendingPathComponent("l4ne_restore_v13_\(UUID().uuidString).sqlite").path
         defer {
             try? FileManager.default.removeItem(atPath: dbPath)
             try? FileManager.default.removeItem(atPath: restoreDbPath)
@@ -35,19 +35,19 @@ struct L4NETestRunner {
 
         let client = L4NECoreClient(databasePath: dbPath)
 
-        // Gate 1: Engine v1.2.0 & Idempotent Demo Seeding + Schema v3 Diagnostics
-        assertEqual(L4NECoreClient.engineVersion, "1.2.0", "Engine version 1.2.0")
+        // Gate 1: Engine v1.3.0 & Idempotent Demo Seeding (5 Templates: Examples A, B, C, Pyramid, Compound) + Schema v4 Diagnostics
+        assertEqual(L4NECoreClient.engineVersion, "1.3.0", "Engine version 1.3.0")
         let init1 = try client.initializeDatabase(seedDemoIfEmpty: true)
         assertTrue(init1.seeded, "First init must seed demo protocols")
-        assertEqual(init1.templatesCount, 3, "Three demo protocols seeded")
+        assertEqual(init1.templatesCount, 5, "Five demo protocols seeded (Overview Examples A, B, C + Pyramid + Compound)")
         let init2 = try client.initializeDatabase(seedDemoIfEmpty: true)
         assertTrue(!init2.seeded, "Second init must be idempotent")
 
         let diag = try client.getDatabaseDiagnostics()
-        assertEqual(diag.schemaVersion, 3, "Database schema v3")
-        assertEqual(diag.templatesCount, 3)
+        assertEqual(diag.schemaVersion, 4, "Database schema v4")
+        assertEqual(diag.templatesCount, 5)
         assertEqual(diag.sessionsCount, 4)
-        print("  ✓ Gate 1: Engine v1.2.0, Schema v3 diagnostics & idempotent initialization passed.")
+        print("  ✓ Gate 1: Engine v1.3.0, Schema v4 diagnostics & 5 seeded protocols (Examples A/B/C, Pyramid, Compound) passed.")
 
         // Gate 2: Athletic Centisecond Numpad FFI Parser
         let p1 = try client.parseAthleticNumpad(digits: "3240")
@@ -243,7 +243,7 @@ struct L4NETestRunner {
         let restoreClient = L4NECoreClient(databasePath: restoreDbPath)
         _ = try restoreClient.initializeDatabase(seedDemoIfEmpty: false)
         let restoreSummary = try restoreClient.importBackupJSON(jsonBackup)
-        assertEqual(restoreSummary.templatesRestored, 5)
+        assertEqual(restoreSummary.templatesRestored, 7)
         assertEqual(restoreSummary.sessionsRestored, 6)
         assertEqual(restoreSummary.workoutsRestored, 1)
 
@@ -255,6 +255,7 @@ struct L4NETestRunner {
 
         // Gate 7: v1.2.0 Macrocycle Folder Tags, Intra-Rep Intermediate Splits & Apple Watch Lap Auto-Prefill
         let workouts = try client.listWorkouts()
+        assertEqual(workouts[0].associatedTemplatesCount, 2, "Workout has 2 associated templates")
         let templates = try client.listTemplates()
         guard let pyramidTpl = templates.first(where: { $0.name.contains("Pyramid") }) else {
             fputs("❌ Expected seeded Pyramid template\n", stderr)
@@ -271,6 +272,36 @@ struct L4NETestRunner {
         assertEqual(prefilledPyramid[1].splitsMs, [18_350, 18_400])
         assertEqual(prefilledPyramid[2].durationMs, 18_300 + 18_250 + 18_300)
         print("  ✓ Gate 7: v1.2.0 Macrocycle folder tags, intra-rep splits & Apple Watch lap auto-prefill passed.")
-        print("✅ ALL 7 v1.2.0 FULL-STACK VERIFICATION GATES PASSED (100%).")
+
+        // Gate 8: v1.3.0 Multi-Theme Engine (Bevel Graphite / Strava Obsidian / Bevel Navy / Lane 4 Carbon / Daylight),
+        // Overview Examples B vs C Distinct Protocol Verification, Health Context Baselines & Standalone Workout Flow
+        guard let exB = templates.first(where: { $0.name.contains("6×100m Freestyle — 60s") }),
+              let exC = templates.first(where: { $0.name.contains("6×100m Freestyle — 30s") }) else {
+            fputs("❌ Expected seeded Overview Examples B & C (6x100m @ 60s vs 30s)\n", stderr)
+            exit(1)
+        }
+        assertTrue(exB.activeVersion.protocolHash != exC.activeVersion.protocolHash, "6x100m @ 60s rest and 6x100m @ 30s rest must have distinct SHA-256 protocol hashes")
+
+        let initialSettings = try client.getAppSettings()
+        assertEqual(initialSettings.activeTheme, .graphiteBevel)
+        for preset in ThemePreset.allCases {
+            var s = initialSettings
+            s.activeTheme = preset
+            let saved = try client.updateAppSettings(s)
+            assertEqual(saved.activeTheme, preset)
+            let pal = L4NEPalette.forPreset(preset)
+            assertEqual(pal.preset, preset)
+        }
+
+        let healthSummary = try client.getHealthContextSummary()
+        assertEqual(healthSummary.snapshotsCount, 2)
+        assertTrue((healthSummary.baselineHrvSdnnMs ?? 0) > 60.0, "Personal HRV baseline > 60ms")
+        assertTrue((healthSummary.bevelRecoveryRingPct ?? 0) > 80.0, "Bevel recovery ring > 80%")
+        assertTrue((healthSummary.bevelSleepRingPct ?? 0) > 95.0, "Bevel sleep ring > 95%")
+
+        let standaloneWorkout = try client.setWorkoutStandalone(workoutId: workouts[0].id, keptAsStandalone: true)
+        assertEqual(standaloneWorkout.keptAsStandalone, true)
+        print("  ✓ Gate 8: v1.3.0 Multi-Theme Engine (5 Bevel/Strava themes), Examples B/C hash separation & Health Context Baselines passed.")
+        print("✅ ALL 8 v1.3.0 FULL-STACK VERIFICATION GATES PASSED (100%).")
     }
 }

@@ -182,6 +182,58 @@ impl WorkoutSourceType {
     }
 }
 
+/// Persisted UI Theme Presets (v1.3 Minimalist Graphite / Bevel / Strava Multi-Theme System).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemePreset {
+    /// Default Minimalist Graphite with Bevel tactile specular cards & L4NE Electric Lime.
+    GraphiteBevel,
+    /// Strava-inspired Obsidian Slate with Signal Orange (`#FC4C02`) & PR Gold (`#FACC15`).
+    StravaObsidian,
+    /// LoggedIn-inspired Graphite Navy (`#0F172A` / `#16213A`) with Electric Cyan (`#38BDF8`) & Amber.
+    BevelNavy,
+    /// High-contrast OLED Pure Carbon (`#07080A`) with Lane 4 Electric Lime (`#CCFF00`).
+    Lane4Carbon,
+    /// Clean Minimalist Daylight Lab (`#F4F5F7` / `#FFFFFF`) with Deep Graphite typography.
+    MinimalAlabaster,
+}
+
+impl ThemePreset {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::GraphiteBevel => "graphite_bevel",
+            Self::StravaObsidian => "strava_obsidian",
+            Self::BevelNavy => "bevel_navy",
+            Self::Lane4Carbon => "lane4_carbon",
+            Self::MinimalAlabaster => "minimal_alabaster",
+        }
+    }
+
+    pub fn from_db(value: &str) -> Result<Self, CoreError> {
+        match value {
+            "graphite_bevel" => Ok(Self::GraphiteBevel),
+            "strava_obsidian" => Ok(Self::StravaObsidian),
+            "bevel_navy" => Ok(Self::BevelNavy),
+            "lane4_carbon" => Ok(Self::Lane4Carbon),
+            "minimal_alabaster" => Ok(Self::MinimalAlabaster),
+            other => Err(CoreError::Validation(format!(
+                "Unsupported theme_preset: {other}"
+            ))),
+        }
+    }
+}
+
+/// Persisted local user preferences (stored in `app_settings` table in SQLite Schema v4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppSettings {
+    pub active_theme: ThemePreset,
+    pub default_pool_length_m: i32,
+    pub preferred_sport: SportCategory,
+    pub haptics_enabled: bool,
+    pub auto_advance_sendoff: bool,
+    pub updated_at_ms: i64,
+}
+
 /// Input specification for a block/step inside a template protocol.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TemplateBlockInput {
@@ -470,7 +522,15 @@ pub struct Workout {
     pub active_energy_kcal: Option<f64>,
     pub avg_heart_rate_bpm: Option<f64>,
     pub max_heart_rate_bpm: Option<f64>,
-    /// v1.2: Optional recorded lap/segment durations (in ms) from Apple Watch `HKWorkoutEvent`.
+    #[serde(default)]
+    pub has_route: bool,
+    #[serde(default)]
+    pub route_summary: Option<String>,
+    #[serde(default)]
+    pub kept_as_standalone: bool,
+    #[serde(default)]
+    pub associated_templates_count: i32,
+    /// v1.2+: Optional recorded lap/segment durations (in ms) from Apple Watch `HKWorkoutEvent`.
     #[serde(default)]
     pub lap_durations_ms: Vec<i64>,
     pub notes: Option<String>,
@@ -492,6 +552,10 @@ pub struct ImportWorkoutInput {
     pub active_energy_kcal: Option<f64>,
     pub avg_heart_rate_bpm: Option<f64>,
     pub max_heart_rate_bpm: Option<f64>,
+    #[serde(default)]
+    pub has_route: bool,
+    #[serde(default)]
+    pub route_summary: Option<String>,
     #[serde(default)]
     pub lap_durations_ms: Vec<i64>,
     pub notes: Option<String>,
@@ -520,6 +584,27 @@ pub struct DailyHealthSnapshot {
     pub vo2_max_ml_kg_min: Option<f64>,
     pub source_summary: Option<String>,
     pub captured_at_ms: i64,
+}
+
+/// Deterministic Health Context baseline & Bevel recovery ring metrics (Screen 7 — Health Context).
+/// Obeys "Unknown != 0" (`Option<f64>` is `None` when no samples exist) and presents
+/// strictly observational comparisons against personal baseline.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HealthContextSummary {
+    pub snapshots_count: usize,
+    pub baseline_sleep_minutes: Option<i32>,
+    pub baseline_hrv_sdnn_ms: Option<f64>,
+    pub baseline_resting_hr_bpm: Option<f64>,
+    pub baseline_vo2_max_ml_kg_min: Option<f64>,
+    pub latest_snapshot: Option<DailyHealthSnapshot>,
+    pub latest_sleep_delta_minutes: Option<i32>,
+    pub latest_hrv_delta_ms: Option<f64>,
+    pub latest_rhr_delta_bpm: Option<f64>,
+    /// Normalized 0..=100% Bevel Sleep Ring score relative to 8h (480m) reference (`None` if unknown).
+    pub bevel_sleep_ring_pct: Option<f64>,
+    /// Normalized 0..=100% Bevel Recovery Context Ring derived from personal HRV & RHR baseline (`None` if unknown).
+    pub bevel_recovery_ring_pct: Option<f64>,
+    pub snapshots: Vec<DailyHealthSnapshot>,
 }
 
 /// Unified Daily Training Timeline for a specific `YYYY-MM-DD`.

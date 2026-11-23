@@ -73,7 +73,7 @@ pub unsafe extern "C" fn Java_com_l4ne_training_core_L4NECoreNative_initDatabase
         Ok(json!({
             "seeded": seeded,
             "templates_count": templates.len(),
-            "engine_version": "1.2.0"
+            "engine_version": "1.3.0"
         }))
     })();
 
