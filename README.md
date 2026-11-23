@@ -1,7 +1,11 @@
 # L4NE Performance — L4NE Training (v1.3.0)
 
-> **SPORTS TECHNOLOGY · TRAINING · ANALYTICS**  
-> **BUILT TO OUTPERFORM.**
+<p align="center">
+  <img src="Assets/l4ne-starting-block-logo.svg" alt="L4NE Starting Block #4 Official Logo" width="180" />
+</p>
+
+> **MASTER THE WATER. OWN THE LANE.**  
+> **SPORTS TECHNOLOGY · TRAINING · ANALYTICS · BUILT TO OUTPERFORM.**
 
 **L4NE Training** is a local-first, 100% deterministic athletic training protocol logger, live poolside companion, and multi-sport performance analytics engine created under the **L4NE Performance** brand (inspired by **Lane 4** — traditionally the fastest lane in competitive swimming and finswimming).
 

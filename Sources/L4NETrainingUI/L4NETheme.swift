@@ -580,7 +580,141 @@ public struct L4NEStravaSplitsBarView: View {
     }
 }
 
-// MARK: - Brand Wordmark & Metric Tile
+// MARK: - Official L4NE Starting Block #4 (Βατήρας Εκκίνησης) Vector Logo & Wordmark
+
+/// Renders the official L4NE Starting Block #4 (Βατήρας Εκκίνησης Κολυμβητηρίου με το 4)
+/// from `l4ne.gr` swim caps using crisp native SwiftUI vector geometry.
+public struct L4NEStartingBlockIcon: View {
+    public let blockColor: Color
+    public let cutoutColor: Color
+    public let size: CGFloat
+
+    public init(
+        blockColor: Color = L4NETheme.textPrimary,
+        cutoutColor: Color = L4NETheme.cardSurface,
+        size: CGFloat = 38
+    ) {
+        self.blockColor = blockColor
+        self.cutoutColor = cutoutColor
+        self.size = size
+    }
+
+    public var body: some View {
+        Canvas { context, canvasSize in
+            let w = canvasSize.width
+            let h = canvasSize.height
+            let p = { (x: CGFloat, y: CGFloat) -> CGPoint in
+                CGPoint(x: x * w / 100.0, y: y * h / 100.0)
+            }
+
+            // 1. Top-left Track-Start Rear Wedge Fin
+            var wedge = Path()
+            wedge.move(to: p(21, 9))
+            wedge.addLine(to: p(39, 24))
+            wedge.addLine(to: p(25, 21))
+            wedge.closeSubpath()
+            context.fill(wedge, with: .color(blockColor))
+
+            // 2. Slanted Top Diving Platform Deck
+            var deck = Path()
+            deck.move(to: p(15, 22))
+            deck.addLine(to: p(95, 36))
+            context.stroke(
+                deck,
+                with: .color(blockColor),
+                style: StrokeStyle(lineWidth: w * 0.048, lineCap: .round)
+            )
+
+            // 3. Main Slanted Pedestal Body
+            var pedestal = Path()
+            pedestal.move(to: p(11, 28))
+            pedestal.addLine(to: p(70, 38))
+            pedestal.addQuadCurve(to: p(75, 46), control: p(74, 40))
+            pedestal.addLine(to: p(74, 52))
+            pedestal.addLine(to: p(57, 85))
+            pedestal.addLine(to: p(22, 85))
+            pedestal.addLine(to: p(35, 59))
+            pedestal.addQuadCurve(to: p(31, 46), control: p(38, 51))
+            pedestal.addLine(to: p(11, 39))
+            pedestal.closeSubpath()
+            context.fill(pedestal, with: .color(blockColor))
+
+            // 4. Cutout channel for the Backstroke Grip Rail inside upper pedestal
+            var channelCutout = Path()
+            channelCutout.move(to: p(40, 41))
+            channelCutout.addLine(to: p(77, 48))
+            context.stroke(
+                channelCutout,
+                with: .color(cutoutColor),
+                style: StrokeStyle(lineWidth: w * 0.082, lineCap: .round)
+            )
+
+            // 5. Curved Backstroke Starting Grip Rail extending right and dropping down
+            var gripRail = Path()
+            gripRail.move(to: p(41, 41))
+            gripRail.addLine(to: p(88, 50))
+            gripRail.addQuadCurve(to: p(94, 58), control: p(94, 51))
+            gripRail.addLine(to: p(94, 74))
+            context.stroke(
+                gripRail,
+                with: .color(blockColor),
+                style: StrokeStyle(lineWidth: w * 0.036, lineCap: .round)
+            )
+
+            // 6. Upper-Right Nose Accent & Front-Right Slanted Parallel Trim Bar
+            var noseAccent = Path()
+            noseAccent.move(to: p(78, 42))
+            noseAccent.addLine(to: p(88, 44))
+            noseAccent.addLine(to: p(85, 49))
+            noseAccent.addLine(to: p(78, 48))
+            noseAccent.closeSubpath()
+            context.fill(noseAccent, with: .color(blockColor))
+
+            var frontTrim = Path()
+            frontTrim.move(to: p(78, 55))
+            frontTrim.addLine(to: p(62, 85))
+            context.stroke(
+                frontTrim,
+                with: .color(blockColor),
+                style: StrokeStyle(lineWidth: w * 0.032, lineCap: .butt)
+            )
+
+            // 7. Lower-Left Step Bar & Support Triangle
+            var stepBar = Path()
+            stepBar.move(to: p(8, 67))
+            stepBar.addLine(to: p(28, 67))
+            context.stroke(
+                stepBar,
+                with: .color(blockColor),
+                style: StrokeStyle(lineWidth: w * 0.042, lineCap: .round)
+            )
+
+            var stepWedge = Path()
+            stepWedge.move(to: p(14, 72))
+            stepWedge.addLine(to: p(26, 72))
+            stepWedge.addLine(to: p(23, 78))
+            stepWedge.closeSubpath()
+            context.fill(stepWedge, with: .color(blockColor))
+
+            // 8. Horizontal Bottom Base Plate
+            var basePlate = Path()
+            basePlate.move(to: p(17, 90))
+            basePlate.addLine(to: p(66, 90))
+            context.stroke(
+                basePlate,
+                with: .color(blockColor),
+                style: StrokeStyle(lineWidth: w * 0.040, lineCap: .round)
+            )
+
+            // 9. Cutout Digit '4' in the center of the Starting Block Pedestal
+            let fourText = Text("4")
+                .font(.system(size: w * 0.27, weight: .black, design: .rounded))
+                .foregroundColor(cutoutColor)
+            context.draw(fourText, at: p(49, 66), anchor: .center)
+        }
+        .frame(width: size, height: size)
+    }
+}
 
 public struct L4NEBrandWordmark: View {
     public let subtitle: String
@@ -592,27 +726,28 @@ public struct L4NEBrandWordmark: View {
     }
 
     public var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 11) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(palette.surface1)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(palette.primaryAccent.opacity(0.75), lineWidth: 1.5)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [palette.highlightEdge, palette.primaryAccent.opacity(0.65)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.2
+                            )
                     )
 
-                HStack(spacing: 3) {
-                    Rectangle()
-                        .fill(palette.textSecondary.opacity(0.35))
-                        .frame(width: 2, height: 20)
-                    Rectangle()
-                        .fill(palette.primaryAccent)
-                        .frame(width: 4, height: 22)
-                    Rectangle()
-                        .fill(palette.textSecondary.opacity(0.35))
-                        .frame(width: 2, height: 20)
-                }
+                L4NEStartingBlockIcon(
+                    blockColor: palette.textPrimary,
+                    cutoutColor: palette.surface1,
+                    size: 34
+                )
             }
 
             VStack(alignment: .leading, spacing: 1) {
@@ -624,13 +759,13 @@ public struct L4NEBrandWordmark: View {
                     Text("NE")
                         .foregroundStyle(palette.textPrimary)
                 }
-                .font(.system(size: 20, weight: .black, design: .rounded))
-                .tracking(1.6)
+                .font(.system(size: 21, weight: .black, design: .rounded))
+                .tracking(1.8)
 
                 Text(subtitle)
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundStyle(palette.textSecondary)
-                    .tracking(1.8)
+                    .tracking(1.6)
             }
         }
     }
