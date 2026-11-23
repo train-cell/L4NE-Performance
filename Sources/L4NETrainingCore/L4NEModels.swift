@@ -123,6 +123,70 @@ public enum SportCategory: String, Codable, CaseIterable, Sendable {
         }
         return rawId.uppercased()
     }
+
+    public var recordEventPresets: [(name: String, distanceM: Int?)] {
+        switch self {
+        case .finswimming:
+            return [
+                ("50m Επιφάνεια", 50),
+                ("100m Επιφάνεια", 100),
+                ("200m Επιφάνεια", 200),
+                ("400m Επιφάνεια", 400),
+                ("800m Επιφάνεια", 800),
+                ("50m Άπνοια", 50),
+                ("100m Υποβρύχιο (Φιάλη)", 100),
+                ("400m Υποβρύχιο (Φιάλη)", 400),
+                ("50m Διπλά Πέδιλα", 50),
+                ("100m Διπλά Πέδιλα", 100),
+                ("200m Διπλά Πέδιλα", 200),
+                ("400m Διπλά Πέδιλα", 400)
+            ]
+        case .swimming:
+            return [
+                ("50m Ελεύθερο", 50),
+                ("100m Ελεύθερο", 100),
+                ("200m Ελεύθερο", 200),
+                ("400m Ελεύθερο", 400),
+                ("800m Ελεύθερο", 800),
+                ("1500m Ελεύθερο", 1500),
+                ("50m Πεταλούδα", 50),
+                ("100m Πεταλούδα", 100),
+                ("50m Ύπτιο", 50),
+                ("100m Ύπτιο", 100),
+                ("50m Πρόσθιο", 50),
+                ("100m Πρόσθιο", 100),
+                ("200m Μικτή Ατομική", 200)
+            ]
+        case .track:
+            return [
+                ("100m Sprint", 100),
+                ("200m Sprint", 200),
+                ("400m Sprint", 400),
+                ("800m", 800),
+                ("1500m", 1500),
+                ("110m Εμπόδια", 110),
+                ("400m Εμπόδια", 400)
+            ]
+        case .field:
+            return [
+                ("Άλμα εις Μήκος", nil),
+                ("Άλμα εις Ύψος", nil),
+                ("Τριπλούν", nil),
+                ("Επί Κοντώ", nil),
+                ("Σφαιροβολία", nil),
+                ("Ακοντισμός", nil),
+                ("Δισκοβολία", nil)
+            ]
+        case .gym:
+            return [
+                ("Back Squat 1RM", nil),
+                ("Front Squat 1RM", nil),
+                ("Deadlift 1RM", nil),
+                ("Bench Press 1RM", nil),
+                ("Weighted Pull-Up", nil)
+            ]
+        }
+    }
 }
 
 public enum EnvironmentType: String, Codable, CaseIterable, Sendable {
@@ -841,4 +905,83 @@ public struct DatabaseDiagnostics: Codable, Equatable, Sendable {
     public let repRecordsCount: Int
     public let workoutsCount: Int
     public let healthSnapshotsCount: Int
+}
+
+// MARK: - Personal Records & Historical Progression Over Time
+
+public struct CreatePersonalRecordInput: Codable, Equatable, Sendable {
+    public var sportCategory: SportCategory
+    public var eventName: String
+    public var recordKind: RecordKind
+    public var poolLengthM: Int?
+    public var distanceM: Int?
+    public var durationMs: Int64?
+    public var valueMetric: Double?
+    public var equipment: [String]
+    public var competitionOrLocation: String?
+    public var achievedAtMs: Int64
+    public var notes: String?
+
+    public init(
+        sportCategory: SportCategory,
+        eventName: String,
+        recordKind: RecordKind = .timedDistance,
+        poolLengthM: Int? = nil,
+        distanceM: Int? = nil,
+        durationMs: Int64? = nil,
+        valueMetric: Double? = nil,
+        equipment: [String] = [],
+        competitionOrLocation: String? = nil,
+        achievedAtMs: Int64,
+        notes: String? = nil
+    ) {
+        self.sportCategory = sportCategory
+        self.eventName = eventName
+        self.recordKind = recordKind
+        self.poolLengthM = poolLengthM
+        self.distanceM = distanceM
+        self.durationMs = durationMs
+        self.valueMetric = valueMetric
+        self.equipment = equipment
+        self.competitionOrLocation = competitionOrLocation
+        self.achievedAtMs = achievedAtMs
+        self.notes = notes
+    }
+}
+
+public struct PersonalRecord: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let sportCategory: SportCategory
+    public let eventName: String
+    public let recordKind: RecordKind
+    public let poolLengthM: Int?
+    public let distanceM: Int?
+    public let durationMs: Int64?
+    public let formattedValue: String
+    public let paceMsPer100m: Int64?
+    public let valueMetric: Double?
+    public let equipment: [String]
+    public let competitionOrLocation: String?
+    public let achievedAtMs: Int64
+    public let dateIso: String
+    public let notes: String?
+    public let createdAtMs: Int64
+}
+
+public struct EventRecordProgression: Codable, Equatable, Identifiable, Sendable {
+    public var id: String { eventKey }
+    public let eventKey: String
+    public let eventName: String
+    public let sportCategory: SportCategory
+    public let recordKind: RecordKind
+    public let poolLengthM: Int?
+    public let distanceM: Int?
+    public let entriesCount: Int
+    public let personalBest: PersonalRecord
+    public let initialRecord: PersonalRecord
+    public let latestRecord: PersonalRecord
+    public let totalDeltaMs: Int64?
+    public let totalImprovementPct: Double
+    public let formattedTotalDelta: String
+    public let historyChronological: [PersonalRecord]
 }

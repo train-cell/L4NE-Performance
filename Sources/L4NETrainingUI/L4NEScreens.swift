@@ -26,6 +26,11 @@ public struct L4NERootView: View {
                     Label("Templates", systemImage: "square.stack.3d.up.fill")
                 }
 
+            PersonalRecordsView(store: store)
+                .tabItem {
+                    Label("Ρεκόρ", systemImage: "trophy.fill")
+                }
+
             DailyTimelineView(store: store)
                 .tabItem {
                     Label("Timeline", systemImage: "calendar.day.timeline.left")
@@ -475,16 +480,19 @@ struct SessionSummaryCard: View {
                 }
             }
 
-            // Strava 3-Column Hero Metrics Strip
-            HStack(spacing: 16) {
+            // 4-Column Hero Metrics Strip (Single-Line Guaranteed)
+            HStack(spacing: 12) {
                 if let avg = session.metrics.avgDurationMs {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("AVG REP")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(palette.textSecondary)
+                            .lineLimit(1)
                         Text(L4NEDurationFormatter.formatMs(avg))
-                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .font(.system(size: 15, weight: .black, design: .rounded))
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                             .foregroundStyle(palette.primaryAccent)
                     }
                 }
@@ -494,9 +502,12 @@ struct SessionSummaryCard: View {
                         Text("PACE / 100M")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(palette.textSecondary)
+                            .lineLimit(1)
                         Text(L4NEDurationFormatter.formatPacePer100m(pace))
-                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .font(.system(size: 15, weight: .black, design: .rounded))
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                             .foregroundStyle(palette.textPrimary)
                     }
                 }
@@ -506,9 +517,12 @@ struct SessionSummaryCard: View {
                         Text("TONNAGE")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(palette.textSecondary)
+                            .lineLimit(1)
                         Text(String(format: "%.0f kg", tonnage))
-                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .font(.system(size: 15, weight: .black, design: .rounded))
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                             .foregroundStyle(palette.primaryAccent)
                     }
                 }
@@ -518,9 +532,12 @@ struct SessionSummaryCard: View {
                         Text("EST 1RM")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(palette.textSecondary)
+                            .lineLimit(1)
                         Text(String(format: "%.1f kg", oneRm))
-                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .font(.system(size: 15, weight: .black, design: .rounded))
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                             .foregroundStyle(palette.signalGreen)
                     }
                 }
@@ -530,9 +547,12 @@ struct SessionSummaryCard: View {
                         Text("BEST ATTEMPT")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(palette.textSecondary)
+                            .lineLimit(1)
                         Text(String(format: "%.2f m", bestAttempt))
-                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .font(.system(size: 15, weight: .black, design: .rounded))
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                             .foregroundStyle(palette.primaryAccent)
                     }
                 }
@@ -542,9 +562,12 @@ struct SessionSummaryCard: View {
                         Text("CV% FORM")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(palette.textSecondary)
+                            .lineLimit(1)
                         Text(String(format: "%.2f%%", cv))
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                             .foregroundStyle(palette.signalGreen)
                     }
                 }
@@ -554,9 +577,12 @@ struct SessionSummaryCard: View {
                         Text("FATIGUE SPLIT")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(palette.textSecondary)
+                            .lineLimit(1)
                         Text(String(format: "%+.2f%%", fatigue))
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                             .foregroundStyle(fatigue <= 0 ? palette.signalGreen : palette.warningAmber)
                     }
                 }
@@ -649,33 +675,51 @@ public struct TemplatesLibraryView: View {
                             }
                             .buttonStyle(.plain)
 
-                            HStack(spacing: 12) {
+                            HStack(spacing: 8) {
                                 Button {
                                     templateToEdit = tpl
                                 } label: {
-                                    Label("Επεξεργασία (v\(tpl.activeVersion.versionNumber))", systemImage: "slider.horizontal.3")
+                                    Label("Edit v\(tpl.activeVersion.versionNumber)", systemImage: "slider.horizontal.3")
                                         .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 6)
+                                        .background(L4NETheme.mutedSurface)
                                         .foregroundStyle(L4NETheme.electricLime)
+                                        .clipShape(Capsule())
                                 }
                                 .buttonStyle(.borderless)
 
                                 Button {
                                     templateForPcr = tpl
                                 } label: {
-                                    Label("PCr Model", systemImage: "function")
+                                    Label("PCr", systemImage: "function")
                                         .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 6)
+                                        .background(L4NETheme.mutedSurface)
                                         .foregroundStyle(L4NETheme.prGold)
+                                        .clipShape(Capsule())
                                 }
                                 .buttonStyle(.borderless)
 
-                                Spacer()
+                                Spacer(minLength: 4)
 
                                 Button {
                                     store.toggleTemplateArchived(tpl)
                                 } label: {
                                     Label(tpl.isArchived ? "Επαναφορά" : "Αρχείο", systemImage: "archivebox")
                                         .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 6)
+                                        .background(L4NETheme.mutedSurface)
                                         .foregroundStyle(L4NETheme.textSecondary)
+                                        .clipShape(Capsule())
                                 }
                                 .buttonStyle(.borderless)
 
@@ -684,7 +728,13 @@ public struct TemplatesLibraryView: View {
                                 } label: {
                                     Label("Διαγραφή", systemImage: "trash")
                                         .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 6)
+                                        .background(L4NETheme.regressionRed.opacity(0.14))
                                         .foregroundStyle(L4NETheme.regressionRed)
+                                        .clipShape(Capsule())
                                 }
                                 .buttonStyle(.borderless)
                             }
@@ -2939,5 +2989,483 @@ public struct PcrRecalculatorSheet: View {
                 segments: segments
             )
         )
+    }
+}
+
+// MARK: - 10. Personal Records & Historical Progression Over Time Tab (`Ρεκόρ & Εξέλιξη`)
+
+public struct PersonalRecordsView: View {
+    @ObservedObject var store: L4NEAppStore
+    @State private var showAddRecordSheet = false
+    @State private var prefillEventName: String? = nil
+    @State private var prefillSport: SportCategory? = nil
+    @State private var prefillDistanceM: Int? = nil
+
+    public init(store: L4NEAppStore) {
+        self.store = store
+    }
+
+    private var avgImprovementPct: Double {
+        let vals = store.recordProgressions.map(\.totalImprovementPct).filter { $0 > 0 }
+        guard !vals.isEmpty else { return 0.0 }
+        return vals.reduce(0.0, +) / Double(vals.count)
+    }
+
+    public var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    // Top Hero Summary Card
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(store.activePalette.prGold.opacity(0.16))
+                                .frame(width: 56, height: 56)
+                            Image(systemName: "trophy.fill")
+                                .font(.system(size: 25, weight: .black))
+                                .foregroundStyle(store.activePalette.prGold)
+                        }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("ΑΤΟΜΙΚΑ ΡΕΚΟΡ & ΕΞΕΛΙΞΗ ΣΤΟΝ ΧΡΟΝΟ")
+                                .font(.system(size: 10, weight: .black, design: .monospaced))
+                                .foregroundStyle(store.activePalette.primaryAccent)
+                            Text("\(store.recordProgressions.count) Αγωνίσματα · Μέση Βελτίωση +\(String(format: "%.2f%%", avgImprovementPct))")
+                                .font(.system(size: 15, weight: .black))
+                                .foregroundStyle(store.activePalette.textPrimary)
+                            Text("Καταχώρησε αγωνιστικά ρεκόρ ή τεστ και παρακολούθησε την καμπύλη εξέλιξης.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(store.activePalette.textSecondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(14)
+                    .l4neAnimatedBox(
+                        palette: store.activePalette,
+                        isMaximized: store.isMaximized,
+                        phaseSeed: 0.15,
+                        cornerRadius: 16
+                    )
+
+                    // + New Record 3D Tactile Button
+                    Button {
+                        prefillEventName = nil
+                        prefillSport = nil
+                        prefillDistanceM = nil
+                        showAddRecordSheet = true
+                    } label: {
+                        Label("ΚΑΤΑΧΩΡΗΣΗ ΝΕΟΥ ΡΕΚΟΡ / ΕΠΙΔΟΣΗΣ", systemImage: "plus.circle.fill")
+                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .foregroundStyle(store.activePalette.textOnAccent)
+                    }
+                    .buttonStyle(
+                        L4NEDuolingo3DButtonStyle(
+                            surfaceColor: store.activePalette.primaryAccent,
+                            cornerRadius: 12,
+                            isMaximized: store.isMaximized && store.maximizeConfig.tactile3DButtonsEnabled,
+                            soundCue: .dropletTap
+                        )
+                    )
+
+                    // Event Progressions Cards with Swift Charts Time-Series Curve
+                    ForEach(Array(store.recordProgressions.enumerated()), id: \.element.id) { idx, prog in
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "medal.fill")
+                                            .foregroundStyle(store.activePalette.prGold)
+                                        Text(prog.eventName)
+                                            .font(.system(size: 17, weight: .black))
+                                            .foregroundStyle(store.activePalette.textPrimary)
+                                    }
+                                    Text("\(prog.sportCategory.displayTitle)\(prog.poolLengthM.map { " · Πισίνα \($0)m" } ?? "") · \(prog.entriesCount) καταγραφές")
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(store.activePalette.textSecondary)
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text("PB \(prog.personalBest.formattedValue)")
+                                        .font(.system(size: 20, weight: .black, design: .rounded))
+                                        .monospacedDigit()
+                                        .foregroundStyle(store.activePalette.prGold)
+                                    Text(prog.formattedTotalDelta)
+                                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                                        .foregroundStyle(prog.totalImprovementPct >= 0 ? store.activePalette.signalGreen : store.activePalette.warningAmber)
+                                }
+                            }
+
+                            // Baseline -> PB Strip
+                            HStack(spacing: 16) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("ΑΡΧΙΚΗ ΚΑΤΑΓΡΑΦΗ")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(store.activePalette.textSecondary)
+                                    Text("\(prog.initialRecord.formattedValue) (\(prog.initialRecord.dateIso))")
+                                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(store.activePalette.textPrimary)
+                                }
+
+                                Spacer()
+
+                                if let pace = prog.personalBest.paceMsPer100m {
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("PB PACE / 100M")
+                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(store.activePalette.textSecondary)
+                                        Text(L4NEDurationFormatter.formatPacePer100m(pace))
+                                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                                            .foregroundStyle(store.activePalette.primaryAccent)
+                                    }
+                                }
+                            }
+                            .padding(10)
+                            .background(store.activePalette.surface2)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                            // Native Swift Charts Time-Series Progression Curve
+                            #if canImport(Charts)
+                            if prog.historyChronological.count >= 2 {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("ΚΑΜΠΥΛΗ ΕΞΕΛΙΞΗΣ ΣΤΟΝ ΧΡΟΝΟ")
+                                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                                        .foregroundStyle(store.activePalette.textSecondary)
+
+                                    let yValues: [Double] = prog.historyChronological.map { r in
+                                        if let ms = r.durationMs {
+                                            return Double(ms) / 1000.0
+                                        }
+                                        return r.valueMetric ?? 0.0
+                                    }
+                                    let minY = (yValues.min() ?? 0.0) * 0.97
+                                    let maxY = (yValues.max() ?? 1.0) * 1.03
+
+                                    Chart {
+                                        ForEach(Array(prog.historyChronological.enumerated()), id: \.element.id) { stepIdx, rec in
+                                            let yVal: Double = rec.durationMs.map { Double($0) / 1000.0 } ?? (rec.valueMetric ?? 0.0)
+                                            let xLabel = "#\(stepIdx + 1) \(String(rec.dateIso.suffix(5)))"
+
+                                            LineMark(
+                                                x: .value("Ημερομηνία", xLabel),
+                                                y: .value("Επίδοση", yVal)
+                                            )
+                                            .interpolationMethod(.catmullRom)
+                                            .foregroundStyle(store.activePalette.primaryAccent)
+                                            .lineStyle(StrokeStyle(lineWidth: 2.5))
+
+                                            PointMark(
+                                                x: .value("Ημερομηνία", xLabel),
+                                                y: .value("Επίδοση", yVal)
+                                            )
+                                            .foregroundStyle(rec.id == prog.personalBest.id ? store.activePalette.prGold : store.activePalette.primaryAccent)
+                                            .symbolSize(rec.id == prog.personalBest.id ? 90 : 50)
+                                            .annotation(position: .top) {
+                                                Text(rec.formattedValue)
+                                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                                    .foregroundStyle(rec.id == prog.personalBest.id ? store.activePalette.prGold : store.activePalette.textPrimary)
+                                            }
+                                        }
+                                    }
+                                    .chartYScale(domain: minY...max(minY + 0.5, maxY))
+                                    .frame(height: 150)
+                                }
+                                .padding(10)
+                                .background(store.activePalette.surface2.opacity(0.6))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            #endif
+
+                            // Chronological Entries List
+                            VStack(spacing: 6) {
+                                ForEach(prog.historyChronological.reversed()) { rec in
+                                    let isPb = rec.id == prog.personalBest.id
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            HStack(spacing: 6) {
+                                                Text(rec.dateIso)
+                                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                                    .foregroundStyle(store.activePalette.primaryAccent)
+                                                if isPb {
+                                                    Text("PB")
+                                                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                                                        .padding(.horizontal, 6)
+                                                        .padding(.vertical, 1)
+                                                        .background(store.activePalette.prGold.opacity(0.2))
+                                                        .foregroundStyle(store.activePalette.prGold)
+                                                        .clipShape(Capsule())
+                                                }
+                                                if let comp = rec.competitionOrLocation, !comp.isEmpty {
+                                                    Text("· \(comp)")
+                                                        .font(.system(size: 11, weight: .medium))
+                                                        .foregroundStyle(store.activePalette.textSecondary)
+                                                        .lineLimit(1)
+                                                }
+                                            }
+                                            if !rec.equipment.isEmpty {
+                                                Text(rec.equipment.map { SportCategory.equipmentDisplayTitle(for: $0) }.joined(separator: " · "))
+                                                    .font(.system(size: 10))
+                                                    .foregroundStyle(store.activePalette.textSecondary)
+                                            }
+                                        }
+                                        Spacer()
+                                        Text(rec.formattedValue)
+                                            .font(.system(size: 14, weight: .black, design: .monospaced))
+                                            .monospacedDigit()
+                                            .foregroundStyle(isPb ? store.activePalette.prGold : store.activePalette.textPrimary)
+
+                                        Button(role: .destructive) {
+                                            store.deletePersonalRecord(recordId: rec.id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(store.activePalette.regressionRed)
+                                                .padding(5)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 7)
+                                    .background(store.activePalette.surface2.opacity(0.5))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                }
+                            }
+
+                            Button {
+                                prefillSport = prog.sportCategory
+                                prefillEventName = prog.eventName
+                                prefillDistanceM = prog.distanceM
+                                showAddRecordSheet = true
+                            } label: {
+                                Label("+ Προσθήκη Νέας Επίδοσης στο '\(prog.eventName)'", systemImage: "plus")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(store.activePalette.primaryAccent)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(15)
+                        .l4neAnimatedBox(
+                            palette: store.activePalette,
+                            isMaximized: store.isMaximized,
+                            phaseSeed: Double(idx) * 0.7,
+                            cornerRadius: 16
+                        )
+                    }
+                }
+                .padding(16)
+            }
+            .background(
+                L4NECinematicAmbientBackground(
+                    palette: store.activePalette,
+                    config: store.maximizeConfig
+                )
+            )
+            .navigationTitle("Ατομικά Ρεκόρ")
+            .sheet(isPresented: $showAddRecordSheet) {
+                PersonalRecordBuilderSheet(
+                    store: store,
+                    initialSport: prefillSport,
+                    initialEventName: prefillEventName,
+                    initialDistanceM: prefillDistanceM
+                )
+            }
+        }
+    }
+}
+
+public struct PersonalRecordBuilderSheet: View {
+    @ObservedObject var store: L4NEAppStore
+    public let initialSport: SportCategory?
+    public let initialEventName: String?
+    public let initialDistanceM: Int?
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var sport: SportCategory = .finswimming
+    @State private var eventName: String = "50m Επιφάνεια"
+    @State private var distanceM: Int = 50
+    @State private var poolLengthM: Int = 50
+    @State private var rawTimeDigits: String = "1795"
+    @State private var metricValue: Double = 7.25
+    @State private var selectedEquipment: Set<String> = ["monofin", "snorkel", "mask"]
+    @State private var competitionName: String = "Αγώνας / Τεστ"
+    @State private var recordDate: Date = Date()
+    @State private var notes: String = ""
+
+    public init(
+        store: L4NEAppStore,
+        initialSport: SportCategory? = nil,
+        initialEventName: String? = nil,
+        initialDistanceM: Int? = nil
+    ) {
+        self.store = store
+        self.initialSport = initialSport
+        self.initialEventName = initialEventName
+        self.initialDistanceM = initialDistanceM
+    }
+
+    private var parsedDuration: NumpadParseResult? {
+        try? store.client.parseAthleticNumpad(digits: rawTimeDigits)
+    }
+
+    public var body: some View {
+        NavigationStack {
+            Form {
+                Section("Άθλημα & Αγώνισμα") {
+                    Picker("Άθλημα", selection: $sport) {
+                        ForEach(SportCategory.allCases, id: \.self) { cat in
+                            Text(cat.displayTitle).tag(cat)
+                        }
+                    }
+                    .onChange(of: sport) { _, newSport in
+                        selectedEquipment = newSport.defaultEquipmentIds
+                        if let firstEvent = newSport.recordEventPresets.first {
+                            eventName = firstEvent.name
+                            if let d = firstEvent.distanceM { distanceM = d }
+                        }
+                    }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(sport.recordEventPresets, id: \.name) { preset in
+                                let selected = eventName == preset.name
+                                Button {
+                                    eventName = preset.name
+                                    if let d = preset.distanceM { distanceM = d }
+                                } label: {
+                                    Text(preset.name)
+                                        .font(.system(size: 11, weight: .bold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(selected ? store.activePalette.primaryAccent : store.activePalette.surface2)
+                                        .foregroundStyle(selected ? store.activePalette.textOnAccent : store.activePalette.textPrimary)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+                    }
+
+                    TextField("Όνομα Αγωνίσματος", text: $eventName)
+
+                    if sport == .swimming || sport == .finswimming {
+                        Picker("Μήκος Πισίνας", selection: $poolLengthM) {
+                            Text("50m").tag(50)
+                            Text("25m").tag(25)
+                        }
+                    }
+                }
+
+                Section("Επίδοση (Από αριστερά προς τα δεξιά)") {
+                    if sport.defaultRecordKind == .timedDistance {
+                        HStack {
+                            Text("Χρόνος (Ψηφία π.χ. 1795 ή 11700)")
+                                .font(.system(size: 12))
+                            Spacer()
+                            TextField("1795", text: $rawTimeDigits)
+                                .multilineTextAlignment(.trailing)
+                                .font(.system(size: 16, weight: .black, design: .monospaced))
+                        }
+
+                        HStack {
+                            Text("Μορφοποιημένος Χρόνος:")
+                                .font(.system(size: 12, weight: .semibold))
+                            Spacer()
+                            Text(parsedDuration?.formattedDisplay ?? "00.00")
+                                .font(.system(size: 22, weight: .black, design: .monospaced))
+                                .foregroundStyle(store.activePalette.prGold)
+                        }
+                    } else {
+                        Stepper(
+                            String(
+                                format: sport == .gym ? "Βάρος 1RM: %.1f kg" : "Επίδοση: %.2f m",
+                                metricValue
+                            ),
+                            value: $metricValue,
+                            in: 0.5...500.0,
+                            step: sport == .gym ? 2.5 : 0.05
+                        )
+                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    }
+
+                    DatePicker("Ημερομηνία Επίδοσης", selection: $recordDate, displayedComponents: [.date])
+                    TextField("Διοργάνωση / Τοποθεσία (π.χ. Πανελλήνιο, Test)", text: $competitionName)
+                }
+
+                Section("Εξοπλισμός — \(sport.displayTitle)") {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 115))], spacing: 8) {
+                        ForEach(sport.availableEquipment) { item in
+                            let isSelected = selectedEquipment.contains(item.id)
+                            Button {
+                                if isSelected {
+                                    selectedEquipment.remove(item.id)
+                                } else {
+                                    selectedEquipment.insert(item.id)
+                                }
+                            } label: {
+                                Text(item.title)
+                                    .font(.system(size: 11, weight: .bold))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 7)
+                                    .background(isSelected ? store.activePalette.primaryAccent : store.activePalette.surface2)
+                                    .foregroundStyle(isSelected ? store.activePalette.textOnAccent : store.activePalette.textPrimary)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Νέο Ατομικό Ρεκόρ")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Ακύρωση") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Αποθήκευση") {
+                        saveRecord()
+                    }
+                }
+            }
+            .onAppear {
+                if let s = initialSport {
+                    sport = s
+                    selectedEquipment = s.defaultEquipmentIds
+                }
+                if let ev = initialEventName {
+                    eventName = ev
+                }
+                if let d = initialDistanceM {
+                    distanceM = d
+                }
+            }
+        }
+    }
+
+    private func saveRecord() {
+        let kind = sport.defaultRecordKind
+        let poolOpt: Int? = (sport == .swimming || sport == .finswimming) ? poolLengthM : nil
+        let distOpt: Int? = kind == .timedDistance ? distanceM : nil
+        let durOpt: Int64? = kind == .timedDistance ? (parsedDuration?.durationMs ?? 18_000) : nil
+        let valOpt: Double? = kind == .timedDistance ? nil : metricValue
+
+        store.createPersonalRecord(
+            CreatePersonalRecordInput(
+                sportCategory: sport,
+                eventName: eventName.trimmingCharacters(in: .whitespaces).isEmpty ? "50m Επιφάνεια" : eventName,
+                recordKind: kind,
+                poolLengthM: poolOpt,
+                distanceM: distOpt,
+                durationMs: durOpt,
+                valueMetric: valOpt,
+                equipment: Array(selectedEquipment).sorted(),
+                competitionOrLocation: competitionName.isEmpty ? nil : competitionName,
+                achievedAtMs: Int64(recordDate.timeIntervalSince1970 * 1000),
+                notes: notes.isEmpty ? nil : notes
+            )
+        )
+        dismiss()
     }
 }

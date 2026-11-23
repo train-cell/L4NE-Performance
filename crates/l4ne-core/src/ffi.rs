@@ -4,8 +4,9 @@ use crate::analytics::{calculate_pcr_prediction, compare_sessions, compute_templ
 use crate::db::L4neDatabase;
 use crate::engine::{evaluate_live_timer_tick, parse_athletic_numpad};
 use crate::models::{
-    AppSettings, CoreError, CreateTemplateInput, DailyHealthSnapshot, ImportWorkoutInput,
-    LiveTimerTickInput, LogSessionInput, PcrRecalculatorInput, UpdateTemplateProtocolInput,
+    AppSettings, CoreError, CreatePersonalRecordInput, CreateTemplateInput, DailyHealthSnapshot,
+    ImportWorkoutInput, LiveTimerTickInput, LogSessionInput, PcrRecalculatorInput,
+    UpdateTemplateProtocolInput,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -119,6 +120,15 @@ pub enum FfiCommand {
     TemplatePcrPredictions {
         template_id: String,
     },
+    CreatePersonalRecord {
+        payload: CreatePersonalRecordInput,
+        now_ms: Option<i64>,
+    },
+    DeletePersonalRecord {
+        record_id: String,
+    },
+    ListPersonalRecords,
+    ListRecordProgressions,
     ExportJson {
         now_ms: Option<i64>,
     },
@@ -263,6 +273,21 @@ pub fn execute_command_json_str(db_path: &str, request_json: &str) -> String {
             Ok(serde_json::to_value(compute_template_pcr_predictions(
                 &tpl, &sessions,
             ))?)
+        }
+        FfiCommand::CreatePersonalRecord { payload, now_ms } => Ok(serde_json::to_value(
+            db.create_personal_record(&payload, now_ms.unwrap_or_else(current_epoch_ms))?,
+        )?),
+        FfiCommand::DeletePersonalRecord { record_id } => {
+            let deleted = db.delete_personal_record(&record_id)?;
+            Ok(json!({ "deleted": deleted }))
+        }
+        FfiCommand::ListPersonalRecords => {
+            let _ = db.seed_demo_records_if_empty();
+            Ok(serde_json::to_value(db.list_personal_records()?)?)
+        }
+        FfiCommand::ListRecordProgressions => {
+            let _ = db.seed_demo_records_if_empty();
+            Ok(serde_json::to_value(db.list_record_progressions()?)?)
         }
         FfiCommand::CompareSessions {
             current_session_id,

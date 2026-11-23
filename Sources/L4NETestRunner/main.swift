@@ -378,6 +378,39 @@ struct L4NETestRunner {
         assertEqual(L4NEVisualMode.maximized.badgeTitle, "🎬 MAXIMIZED")
         assertEqual(L4NEVisualMode.minimal.badgeTitle, "◐ MINIMAL")
         print("  ✓ Gate 9: Segmented PCr Race Prediction & Recalculator (Case Study A -> 2:53.59, Case Study B -> 76.99s, 8x50m -> 200m & 400m) + Minimal/Maximized Motion Engine passed.")
-        print("✅ ALL 9 v1.3.0 FULL-STACK VERIFICATION GATES PASSED (100%).")
+
+        // Gate 10: Personal Records & Historical Progression Over Time Tab (Seeded 50m/200m/400m progressions + Create/Delete Personal Record)
+        let progressions = try client.listRecordProgressions()
+        assertEqual(progressions.count, 3, "Three seeded personal record event progressions (50m, 200m, 400m Surface)")
+        if let p50 = progressions.first(where: { $0.eventName == "50m Επιφάνεια" }) {
+            assertEqual(p50.entriesCount, 3)
+            assertEqual(p50.initialRecord.durationMs, 19_100)
+            assertEqual(p50.personalBest.durationMs, 17_950)
+            assertEqual(p50.totalDeltaMs, -1_150)
+            assertTrue(p50.totalImprovementPct > 6.0, "50m progression improvement > 6.0%")
+        }
+        let newRec = try client.createPersonalRecord(
+            CreatePersonalRecordInput(
+                sportCategory: .finswimming,
+                eventName: "50m Επιφάνεια",
+                recordKind: .timedDistance,
+                poolLengthM: 50,
+                distanceM: 50,
+                durationMs: 17_600,
+                equipment: ["monofin", "snorkel", "mask"],
+                competitionOrLocation: "Πανευρωπαϊκό Πρωτάθλημα · Νέο PB",
+                achievedAtMs: 1_796_000_000_000
+            )
+        )
+        assertEqual(newRec.formattedValue, "17.60s")
+        let updatedProg = try client.listRecordProgressions()
+        if let p50Updated = updatedProg.first(where: { $0.eventName == "50m Επιφάνεια" }) {
+            assertEqual(p50Updated.entriesCount, 4)
+            assertEqual(p50Updated.personalBest.durationMs, 17_600, "New 17.60s entry must become the Personal Best")
+        }
+        let recDeleted = try client.deletePersonalRecord(recordId: newRec.id)
+        assertTrue(recDeleted, "deletePersonalRecord must succeed")
+        print("  ✓ Gate 10: Personal Records & Historical Progression Over Time ('50m/200m/400m Επιφάνεια' curves, PB tracking & delta %) passed.")
+        print("✅ ALL 10 v1.4.0 FULL-STACK VERIFICATION GATES PASSED (100%).")
     }
 }

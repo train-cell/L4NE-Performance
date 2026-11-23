@@ -1,6 +1,31 @@
 # Changelog
 
-All notable changes to **L4NE Performance (`L4NE Training`)** are documented in this file.
+All notable changes to **L4NE Performance** are documented in this file.
+
+## 2026-11-23 — v1.4.0: Personal Records & Progression Over Time Tab, Segmented PCr Recalculator, Blue/Deep-Blue/Navy/Red Themes & Custom Maximize Studio
+
+- **Personal Records & Progression Over Time Tab (`Ρεκόρ` · `PersonalRecordsView` & `personal_records` in SQLite):**
+  - Added dedicated **`Ρεκόρ` (`PersonalRecordsView`)** primary tab with `personal_records` persistence in `crates/l4ne-core/src/db.rs` and `list_record_progressions` chronological grouping.
+  - Tracks Personal Best (`PB`), Initial Baseline, Latest Record, Total Delta (`-1.15s`, `-4.40s`, `-5.61s`), Percentage Improvement (`+6.02%`, `+5.41%`, `+3.13%`), and renders a **Native Swift Charts Time-Series Progression Curve** (`LineMark` + `PointMark`) for every event across **Τεχνική Κολύμβηση**, **Κλασική Κολύμβηση**, **Στίβο (Track)**, **Κονίστρα (Field)**, and **Γυμναστήριο (Gym)**.
+- **Segmented PCr Race Predictor & Interactive Recalculator (`calculate_pcr_prediction` & `PcrRecalculatorSheet`):**
+  - Implemented the Segmented PCr Model v2.0 (`Recovery = 1 - e^(-t/τ)`, `Δ = k·Recovery + FF`, `τ = 28s`, `k = 0.16` for 200m, `k = 0.13` for 400m) in `crates/l4ne-core/src/analytics.rs`.
+  - Automatically distinguishes **Segmented PCr Mode** (0% penalty on Segment 1 when `d_1 > 150m`, matching Case Study A `200m + 20s + 150m → 2:53.59`) and **Symmetric Broken Set Mode** (matching Case Study B `4×50m @ 15s → 76.99s / 1:17.00`).
+  - Automatically derives `200m`, `400m`, and `800m` PCr Race Predictions per template (`4×50m`, `8×50m`, `4×100m`, `6×100m`, Pyramid & Compound sets).
+- **5 Blue / Deep Blue / Navy / Red / Daylight Themes & High-Contrast Carved `#4` Starting Block Logo:**
+  - Replaced the green theme with **Aquatic Blue (`#3B82F6`)** and **Midnight Deep Blue (`#2563EB`)**, alongside **Poolside Navy (`#38BDF8`)**, **Athletic Red (`#EF4444`)**, and **Daylight Blue**.
+  - Carved the digit **`4`** as a high-contrast vector cutout path inside `L4NEStartingBlockIcon` so `#4` is razor-sharp across every theme and screen.
+- **Custom Maximize Studio (`L4NEMaximizeConfig`) & Procedural Audio/Haptics Engine (`L4NESoundHapticsEngine`):**
+  - Added customizable **`0% .. 100%` Intensity Slider**, 4 quick presets (`0% Minimal`, `40% Subtle`, `75% Balanced`, `100% Ultra Max`), and **7 independent custom switches** (`Σταγόνες`, `Κύματα & Σημαδούρες #4`, `Σημαιάκια & Φυσαλίδες`, `Κίνηση Βατήρα #4`, `Animated Εικονίδια & Λάμψη Καρτών`, `3D Duolingo Tactile Κουμπιά`, `Ηχητικά Εφέ & Haptics`) with zero-lag CoreAnimation scrolling.
+- **Left-to-Right Centisecond Numpad, Sport-Specific Equipment Catalog & Template Deletion:**
+  - Progressive left-to-right numpad parser (`"3"` → `3.00s`, `"32"` → `32.00s`, `"324"` → `32.40s`, `"3240"` → `32.40s`).
+  - Complete equipment catalog per sport (`Μονοπέδιλο`, `Αναπνευστήρας`, `Μάσκα`, `Φιάλη Οξυγόνου`, `Διπλά Πέδιλα`, `Χεράκια (Paddles)`, `Pull Buoy`, `Σανίδα`, `Spikes`, `Βατήρας Εκκίνησης`, `Εμπόδια`, `Έλκηθρο`, `Σφαίρα`, `Δίσκος`, `Ακόντιο`, `Κοντάρι`, `Μπάρα`).
+  - Transactional `delete_template` across SQLite, C-FFI, and SwiftUI.
+- **Verification:**
+  - Rust Core unit & integration suite: **8/8 PASS** (0 warnings).
+  - Swift 6 + Rust C-FFI Full-Stack Verification Runner (`L4NETestRunner`): **10/10 GATES PASS (100%)**.
+  - Native `L4NETrainingApp` executable compilation & `L4NETraining.xcodeproj` iOS Simulator release build: **PASS**.
+
+---
 
 ## 2026-11-23 — v1.3.0: Minimalist Graphite / Bevel / Strava Multi-Theme System, Bevel Rings, Strava Split Bars & Screen 7 Health Context
 

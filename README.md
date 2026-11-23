@@ -1,4 +1,4 @@
-# L4NE Performance — L4NE Training (v1.3.0)
+# L4NE Performance (v1.4.0)
 
 <p align="center">
   <img src="Assets/l4ne-starting-block-logo.svg" alt="L4NE Starting Block #4 Official Logo" width="180" />
@@ -7,25 +7,24 @@
 > **MASTER THE WATER. OWN THE LANE.**  
 > **SPORTS TECHNOLOGY · TRAINING · ANALYTICS · BUILT TO OUTPERFORM.**
 
-**L4NE Training** is a local-first, 100% deterministic athletic training protocol logger, live poolside companion, and multi-sport performance analytics engine created under the **L4NE Performance** brand (inspired by **Lane 4** — traditionally the fastest lane in competitive swimming and finswimming).
+**L4NE Performance** is a local-first, 100% deterministic athletic training protocol logger, live poolside companion, **Segmented PCr Race Predictor**, **Personal Records & Progression Tracker**, and multi-sport performance analytics engine (inspired by **Lane 4** — traditionally the fastest lane in competitive swimming and finswimming).
 
-Featuring a **Minimalist Graphite, Bevel & Strava-inspired Multi-Theme UI** (with 5 persisted themes: *Graphite Bevel*, *Strava Athletic Obsidian*, *LoggedIn Bevel Navy*, *L4NE Pure Carbon & Lime*, and *Minimalist Lab Daylight*), triple concentric **Bevel Performance & Recovery Rings**, and **Strava Horizontal Split Pace Bar Cards**, athletes define reusable training protocols (**Templates** — from homogeneous interval sets like `8 × 50m Surface Monofin @ 30s rest`, `6 × 100m @ 60s rest`, `6 × 100m @ 30s rest` to complex **Pyramids** `50-100-150-100-50m`, **Multi-Round Send-Off Compound Sets** `4 × [2×50m @ 0:50 + 1×100m @ 1:40]`, **Track Sprints**, **Field Jumps/Throws**, and **Gym Strength Protocols**), record executions via the **Athletic Centisecond Numpad** or the **Live Poolside Companion Timer**, integrate with **Apple HealthKit**, and measure true physical evolution over time.
-
-**No AI. No LLMs. No unnecessary cloud. Just training data, deterministic mathematics, and measurable progress.**
+Featuring 5 persisted athletic themes (**Aquatic Blue**, **Midnight Deep Blue**, **Poolside Navy**, **Athletic Red**, and **Daylight Blue**), the **Custom Maximize Studio** (`0%..100%` intensity slider + 7 independent switches for 60fps falling water droplets, rising pool waves with Lane 4 buoys, rising pennant flags, diving Starting Block #4, 3D Duolingo tactile push buttons, and procedural PCM sounds & haptics), triple concentric **Bevel Performance & Recovery Rings**, and **Horizontal Split Pace Bar Cards**, athletes define reusable training protocols (**Templates**), record executions via the **Left-to-Right Centisecond Numpad** or **Live Poolside Timer**, run the **Segmented PCr Race Recalculator** (`200m` & `400m` predictions), log **Personal Records (`Ρεκόρ`)** to visualize their time-series improvement curve, and integrate with **Apple HealthKit**.
 
 ---
 
-## 1. Full v1.2.0 Capability Matrix
+## 1. Full v1.4.0 Capability Matrix
 
-| Subsystem | v1.2.0 Implementation Status |
+| Subsystem | v1.4.0 Implementation Status |
 | :--- | :--- |
-| **Multi-Platform Rust Core (`l4ne-core` v1.2.0)** | Bundled SQLite Schema v3 (`rusqlite`), SHA-256 Protocol Versioning (`v1 → v2 → vN`), Macrocycle `folder_tag`, Homogeneous + Pyramid + Compound Slot Expansion, C-ABI FFI (`l4ne_core.h`) for Swift 6 & JNI (`jni_android.rs`) for Android Kotlin. |
-| **Live Poolside Companion Mode (v1.1 / v1.2)** | High-contrast 62pt monospaced stopwatch using monotonic uptime (`systemUptime`), `0.80s` wet-finger debounce guard, intra-rep **`LAP SPLIT`** turn capture, deterministic **Fixed Rest** & **Send-Off Cycle** countdowns (`-10s`, `-5s`, `3..2..1..`, `DEPART NOW!`), and 1-tap SQLite session save. |
-| **Post-Workout Centisecond Numpad** | Zero-punctuation digit entry (`3240` → `32.40s`, `10855` → `1:08.55`), `SAME PREV`, `±0.10s` micro-adjustments, `SKIP`, Stroke Count (`SWOLF` calculation), RPE, and live Running Average. |
-| **Multi-Sport UI & Analytics** | Full support for **Finswimming** (`Surface`, `Apnea`, `Immersion`, `Bifins`), **Swimming** (`Freestyle`, `Butterfly`, `Backstroke`, `Breaststroke`, `IM`), **Track** (`TimedDistance`), **Field** (`DistanceAttempt` in meters, best attempt), and **Gym** (`WeightReps` kg × reps, Total Tonnage kg, Epley Estimated 1RM). |
-| **Native Charts & Analytics** | Swift `Charts` rep-by-rep performance & fatigue curve, interactive Session-vs-Session comparison picker, slot-by-slot Pyramid deltas, Consistency `CV%`, Fatigue Index `%` (negative split detection), and observational HealthKit correlation notes. |
-| **Apple HealthKit Read, Write & Lap Prefill (v1.2)** | Read authorization, deterministic workout-to-template matcher, **1-tap Watch Lap Auto-Prefill (`prefill_reps_from_workout_laps`)** across homogeneous and pyramid slots, **Write/Export (`HKWorkoutBuilder`)** with `exported_external_uuid` duplicate export protection, and Daily Recovery Snapshot editor (Sleep, HRV SDNN, Resting HR, VO₂ Max). |
-| **Local-First Portability & Schema Contract** | Fail-closed **JSON Backup Export & Full Transactional JSON Restore (`import_json`)** preserving all historical `TemplateVersion` rows (`v1..vN`), JSON Schema 2020-12 contract, **CSV Export**, and live SQLite Schema v3 diagnostics. |
+| **Multi-Platform Rust Core (`l4ne-core` v1.4.0)** | Bundled SQLite (`rusqlite`), SHA-256 Protocol Versioning (`v1 → v2 → vN`), Transactional `delete_template`, Macrocycle `folder_tag`, Homogeneous + Pyramid + Compound Slot Expansion, C-ABI FFI (`l4ne_core.h`) for Swift 6 & JNI (`jni_android.rs`) for Android Kotlin. |
+| **Segmented PCr Race Predictor & Recalculator** | Implements `Recovery = 1 - e^(-t/τ)` (`τ = 28s`) and `Δ = k·Recovery + FF` (`k = 0.16` for 200m, `k = 0.13` for 400m). Automatically applies **0% penalty on Segment 1 when `>150m`** (Case Study A `2:53.59`) and symmetric broken penalty (Case Study B `1:17.00`), plus automatic `200m` & `400m` predictions on every template (`4×50m`, `8×50m`, `4×100m`, `6×100m`). |
+| **Personal Records & Progression Tab (`Ρεκόρ`)** | Dedicated **`Ρεκόρ` (`PersonalRecordsView`)** tab with `personal_records` SQLite table, tracking Personal Best (`PB`), Initial Baseline, cumulative time/metric delta, percentage improvement (`+X.XX%`), and **Native Swift Charts Time-Series Progression Curve** over time. |
+| **Custom Maximize Studio & Procedural Audio** | 5 Blue/Navy/Red/Daylight themes + **`0%..100%` Custom Maximize Slider** & 7 individual switches (`Σταγόνες`, `Κύματα`, `Σημαιάκια`, `Βατήρας #4`, `Animated Icons/Cards`, `3D Duolingo Buttons`, `Procedural PCM Sounds & Haptics`) with zero-lag CoreAnimation scrolling. |
+| **Left-to-Right Fast Numpad & Sport Equipment** | Left-to-right centisecond entry (`"3"` → `3.00s`, `"32"` → `32.00s`, `"324"` → `32.40s`, `"3240"` → `32.40s`) and sport-specific equipment catalogs for **Τεχνική Κολύμβηση** (`Μονοπέδιλο`, `Αναπνευστήρας`, `Μάσκα`, `Φιάλη Οξυγόνου`, `Διπλά Πέδιλα`), **Κλασική Κολύμβηση** (`Γυαλάκια`, `Χεράκια`, `Pull Buoy`, `Σανίδα`, `Πεδιλάκια`, `Αλεξίπτωτο`), **Στίβο (Track & Field)**, and **Gym**. |
+| **Live Poolside Companion Mode** | High-contrast 62pt monospaced stopwatch using monotonic uptime (`systemUptime`), `0.80s` wet-finger debounce guard, intra-rep **`LAP SPLIT`** turn capture, deterministic **Fixed Rest** & **Send-Off Cycle** countdowns (`-10s`, `-5s`, `3..2..1..`, `DEPART NOW!`), and 1-tap SQLite session save. |
+| **Apple HealthKit Read, Write & Lap Prefill** | Read authorization, deterministic workout-to-template matcher, **1-tap Watch Lap Auto-Prefill (`prefill_reps_from_workout_laps`)**, **Write/Export (`HKWorkoutBuilder`)** with duplicate guard, and Daily Recovery Snapshot editor (Sleep, HRV SDNN, Resting HR, VO₂ Max). |
+| **Local-First Portability & Schema Contract** | Fail-closed **JSON Backup Export & Full Transactional JSON Restore (`import_json`)** preserving all historical `TemplateVersion` rows (`v1..vN`), JSON Schema 2020-12 contract, **CSV Export**, and live SQLite diagnostics. |
 
 ---
 

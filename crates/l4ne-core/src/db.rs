@@ -10,15 +10,16 @@ use crate::analytics::{
     compute_session_metrics, compute_swolf_score, compute_template_analytics, epoch_ms_to_date_iso,
 };
 use crate::engine::{
-    compute_protocol_hash, compute_total_distance_m, expand_template_slots,
+    compute_protocol_hash, compute_total_distance_m, expand_template_slots, format_duration_ms,
     is_homogeneous_protocol,
 };
 use crate::matcher::match_workout_to_templates;
 use crate::models::{
-    AppSettings, CoreError, CreateTemplateInput, DailyHealthSnapshot, DailyTrainingTimeline,
-    DatabaseBackupPayload, DatabaseDiagnostics, EnvironmentType, ExpectedRepSlot,
-    HealthContextSummary, ImportWorkoutInput, LogSessionInput, RecordKind, RepInput, RepRecord,
-    RestMode, RestoreBackupResult, SessionSummaryMetrics, SessionWithReps, SportCategory,
+    AppSettings, CoreError, CreatePersonalRecordInput, CreateTemplateInput, DailyHealthSnapshot,
+    DailyTrainingTimeline, DatabaseBackupPayload, DatabaseDiagnostics, EnvironmentType,
+    EventRecordProgression, ExpectedRepSlot, HealthContextSummary, ImportWorkoutInput,
+    LogSessionInput, PersonalRecord, RecordKind, RepInput, RepRecord, RestMode,
+    RestoreBackupResult, SessionSummaryMetrics, SessionWithReps, SportCategory,
     TemplateAnalyticsReport, TemplateBlock, TemplateBlockInput, TemplateMatchCandidate,
     TemplateVersion, TemplateWithVersion, ThemePreset, UpdateTemplateProtocolInput, Workout,
     WorkoutSourceType,
@@ -187,9 +188,26 @@ impl L4neDatabase {
                 captured_at_ms INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS personal_records (
+                id TEXT PRIMARY KEY NOT NULL,
+                sport_category TEXT NOT NULL,
+                event_name TEXT NOT NULL,
+                record_kind TEXT NOT NULL DEFAULT 'timed_distance',
+                pool_length_m INTEGER,
+                distance_m INTEGER,
+                duration_ms INTEGER,
+                value_metric REAL,
+                equipment_json TEXT NOT NULL DEFAULT '[]',
+                competition_or_location TEXT,
+                achieved_at_ms INTEGER NOT NULL,
+                notes TEXT,
+                created_at_ms INTEGER NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_sessions_template_date ON sessions(template_id, performed_at_ms DESC);
             CREATE INDEX IF NOT EXISTS idx_sessions_version_date ON sessions(template_version_id, performed_at_ms DESC);
             CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(started_at_ms DESC);
+            CREATE INDEX IF NOT EXISTS idx_personal_records_event ON personal_records(event_name, achieved_at_ms ASC);
             "#,
         )?;
 
@@ -1943,8 +1961,9 @@ impl L4neDatabase {
     }
 
     /// Seeds realistic multi-sport templates (Finswimming, Swimming, Track, Gym), sessions,
-    /// and Apple Health data when the database is empty.
+    /// personal records, and Apple Health data when the database is empty.
     pub fn seed_demo_data_if_empty(&mut self) -> Result<bool, CoreError> {
+        self.seed_demo_records_if_empty()?;
         let count: i32 = self
             .conn
             .query_row("SELECT COUNT(*) FROM templates", [], |r| r.get(0))?;
@@ -2302,6 +2321,394 @@ impl L4neDatabase {
             source_summary: Some("Apple Health (Apple Watch Ultra 2)".to_string()),
             captured_at_ms: nov_22_2026_ms,
         })?;
+
+        Ok(true)
+    }
+
+    /// Creates a new Personal Record entry and returns the stored `PersonalRecord`.
+    pub fn create_personal_record(
+        &mut self,
+        input: &CreatePersonalRecordInput,
+        now_ms: i64,
+    ) -> Result<PersonalRecord, CoreError> {
+        let event_name = input.event_name.trim();
+        if event_name.is_empty() {
+            return Err(CoreError::Validation(
+                "Event name cannot be empty".to_string(),
+            ));
+        }
+        if input.duration_ms.is_none() && input.value_metric.is_none() {
+            return Err(CoreError::Validation(
+                "Personal record requires either duration_ms or value_metric".to_string(),
+            ));
+        }
+
+        let id = Uuid::now_v7().to_string();
+        let eq_json = serde_json::to_string(&input.equipment)?;
+        self.conn.execute(
+            r#"
+            INSERT INTO personal_records (
+                id, sport_category, event_name, record_kind, pool_length_m,
+                distance_m, duration_ms, value_metric, equipment_json,
+                competition_or_location, achieved_at_ms, notes, created_at_ms
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            "#,
+            params![
+                id,
+                input.sport_category.as_str(),
+                event_name,
+                input.record_kind.as_str(),
+                input.pool_length_m,
+                input.distance_m,
+                input.duration_ms,
+                input.value_metric,
+                eq_json,
+                input.competition_or_location,
+                input.achieved_at_ms,
+                input.notes,
+                now_ms
+            ],
+        )?;
+        self.get_personal_record(&id)
+    }
+
+    pub fn get_personal_record(&self, id: &str) -> Result<PersonalRecord, CoreError> {
+        let row = self
+            .conn
+            .query_row(
+                r#"
+                SELECT id, sport_category, event_name, record_kind, pool_length_m,
+                       distance_m, duration_ms, value_metric, equipment_json,
+                       competition_or_location, achieved_at_ms, notes, created_at_ms
+                FROM personal_records
+                WHERE id = ?1
+                "#,
+                params![id],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                        r.get::<_, Option<i32>>(4)?,
+                        r.get::<_, Option<i32>>(5)?,
+                        r.get::<_, Option<i64>>(6)?,
+                        r.get::<_, Option<f64>>(7)?,
+                        r.get::<_, String>(8)?,
+                        r.get::<_, Option<String>>(9)?,
+                        r.get::<_, i64>(10)?,
+                        r.get::<_, Option<String>>(11)?,
+                        r.get::<_, i64>(12)?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| CoreError::NotFound(format!("PersonalRecord not found: {id}")))?;
+
+        Self::build_personal_record(row)
+    }
+
+    fn build_personal_record(
+        row: (
+            String,
+            String,
+            String,
+            String,
+            Option<i32>,
+            Option<i32>,
+            Option<i64>,
+            Option<f64>,
+            String,
+            Option<String>,
+            i64,
+            Option<String>,
+            i64,
+        ),
+    ) -> Result<PersonalRecord, CoreError> {
+        let sport = SportCategory::from_db(&row.1)?;
+        let kind = RecordKind::from_db(&row.3)?;
+        let eq: Vec<String> = serde_json::from_str(&row.8).unwrap_or_default();
+        let formatted_value = if let Some(ms) = row.6 {
+            let s = format_duration_ms(ms);
+            if ms < 60_000 {
+                format!("{s}s")
+            } else {
+                s
+            }
+        } else if let Some(val) = row.7 {
+            if kind == RecordKind::WeightReps {
+                format!("{val:.1} kg")
+            } else {
+                format!("{val:.2} m")
+            }
+        } else {
+            "—".to_string()
+        };
+
+        let pace_ms_per_100m = match (row.6, row.5) {
+            (Some(dur), Some(dist)) if dist > 0 && dur > 0 => compute_pace_ms_per_100m(dur, dist),
+            _ => None,
+        };
+
+        Ok(PersonalRecord {
+            id: row.0,
+            sport_category: sport,
+            event_name: row.2,
+            record_kind: kind,
+            pool_length_m: row.4,
+            distance_m: row.5,
+            duration_ms: row.6,
+            formatted_value,
+            pace_ms_per_100m,
+            value_metric: row.7,
+            equipment: eq,
+            competition_or_location: row.9,
+            achieved_at_ms: row.10,
+            date_iso: epoch_ms_to_date_iso(row.10),
+            notes: row.11,
+            created_at_ms: row.12,
+        })
+    }
+
+    pub fn delete_personal_record(&mut self, record_id: &str) -> Result<bool, CoreError> {
+        let deleted = self.conn.execute(
+            "DELETE FROM personal_records WHERE id = ?1",
+            params![record_id],
+        )?;
+        Ok(deleted > 0)
+    }
+
+    pub fn list_personal_records(&self) -> Result<Vec<PersonalRecord>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, sport_category, event_name, record_kind, pool_length_m,
+                   distance_m, duration_ms, value_metric, equipment_json,
+                   competition_or_location, achieved_at_ms, notes, created_at_ms
+            FROM personal_records
+            ORDER BY achieved_at_ms DESC
+            "#,
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, Option<i32>>(4)?,
+                r.get::<_, Option<i32>>(5)?,
+                r.get::<_, Option<i64>>(6)?,
+                r.get::<_, Option<f64>>(7)?,
+                r.get::<_, String>(8)?,
+                r.get::<_, Option<String>>(9)?,
+                r.get::<_, i64>(10)?,
+                r.get::<_, Option<String>>(11)?,
+                r.get::<_, i64>(12)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(Self::build_personal_record(r?)?);
+        }
+        Ok(out)
+    }
+
+    /// Groups all personal records by event and computes chronological progression & cumulative improvement.
+    pub fn list_record_progressions(&self) -> Result<Vec<EventRecordProgression>, CoreError> {
+        let mut all = self.list_personal_records()?;
+        // Sort ascending by date for chronological progression
+        all.sort_by_key(|r| r.achieved_at_ms);
+
+        let mut grouped: Vec<(String, Vec<PersonalRecord>)> = Vec::new();
+        for rec in all {
+            let key = format!(
+                "{}|{}|{:?}",
+                rec.sport_category.as_str(),
+                rec.event_name.to_lowercase(),
+                rec.pool_length_m
+            );
+            if let Some((_, list)) = grouped.iter_mut().find(|(k, _)| *k == key) {
+                list.push(rec);
+            } else {
+                grouped.push((key, vec![rec]));
+            }
+        }
+
+        let mut progressions = Vec::with_capacity(grouped.len());
+        for (key, history) in grouped {
+            if history.is_empty() {
+                continue;
+            }
+            let initial = history.first().unwrap().clone();
+            let latest = history.last().unwrap().clone();
+            let kind = initial.record_kind;
+
+            let personal_best = match kind {
+                RecordKind::TimedDistance => history
+                    .iter()
+                    .filter(|r| r.duration_ms.unwrap_or(i64::MAX) > 0)
+                    .min_by_key(|r| r.duration_ms.unwrap_or(i64::MAX))
+                    .cloned()
+                    .unwrap_or_else(|| latest.clone()),
+                _ => history
+                    .iter()
+                    .max_by(|a, b| {
+                        a.value_metric
+                            .unwrap_or(0.0)
+                            .partial_cmp(&b.value_metric.unwrap_or(0.0))
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .cloned()
+                    .unwrap_or_else(|| latest.clone()),
+            };
+
+            let (total_delta_ms, total_improvement_pct, formatted_total_delta) = match kind {
+                RecordKind::TimedDistance => {
+                    let init_ms = initial.duration_ms.unwrap_or(0);
+                    let pb_ms = personal_best.duration_ms.unwrap_or(0);
+                    if init_ms > 0 && pb_ms > 0 {
+                        let delta_ms = pb_ms - init_ms; // Negative = faster!
+                        let imp_pct =
+                            (((init_ms - pb_ms) as f64 / init_ms as f64) * 10000.0).round() / 100.0;
+                        let sign = if delta_ms <= 0 { "" } else { "+" };
+                        let fmt = format!(
+                            "{}{}s ({:+.2}%)",
+                            sign,
+                            format_duration_ms(delta_ms),
+                            imp_pct
+                        );
+                        (Some(delta_ms), imp_pct, fmt)
+                    } else {
+                        (None, 0.0, "0.00s (0.00%)".to_string())
+                    }
+                }
+                _ => {
+                    let init_v = initial.value_metric.unwrap_or(0.0);
+                    let pb_v = personal_best.value_metric.unwrap_or(0.0);
+                    if init_v > 0.0 {
+                        let diff = pb_v - init_v;
+                        let imp_pct = ((diff / init_v) * 10000.0).round() / 100.0;
+                        let unit = if kind == RecordKind::WeightReps {
+                            "kg"
+                        } else {
+                            "m"
+                        };
+                        (
+                            None,
+                            imp_pct,
+                            format!("{:+.2} {} ({:+.2}%)", diff, unit, imp_pct),
+                        )
+                    } else {
+                        (None, 0.0, "0.00 (0.00%)".to_string())
+                    }
+                }
+            };
+
+            progressions.push(EventRecordProgression {
+                event_key: key,
+                event_name: initial.event_name.clone(),
+                sport_category: initial.sport_category,
+                record_kind: kind,
+                pool_length_m: initial.pool_length_m,
+                distance_m: initial.distance_m,
+                entries_count: history.len(),
+                personal_best,
+                initial_record: initial,
+                latest_record: latest,
+                total_delta_ms,
+                total_improvement_pct,
+                formatted_total_delta,
+                history_chronological: history,
+            });
+        }
+
+        // Order events with most recent updates first
+        progressions.sort_by_key(|p| std::cmp::Reverse(p.latest_record.achieved_at_ms));
+        Ok(progressions)
+    }
+
+    pub fn seed_demo_records_if_empty(&mut self) -> Result<bool, CoreError> {
+        let count: i32 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM personal_records", [], |r| r.get(0))?;
+        if count > 0 {
+            return Ok(false);
+        }
+
+        let sep_15_2026: i64 = 1_789_480_800_000; // 2026-09-15
+        let oct_20_2026: i64 = 1_792_504_800_000; // 2026-10-20
+        let nov_22_2026: i64 = 1_795_356_000_000; // 2026-11-22
+
+        // 1. 50m Επιφάνεια (Μονοπέδιλο) progression: 19.10s -> 18.45s -> 17.95s (-1.15s / +6.02%)
+        for (ts, ms, comp) in [
+            (sep_15_2026, 19_100, "Test Έναρξης Σεζόν"),
+            (oct_20_2026, 18_450, "Ημερίδα Ορίων 50m"),
+            (nov_22_2026, 17_950, "Πανελλήνιο Κύπελλο · PB"),
+        ] {
+            self.create_personal_record(
+                &CreatePersonalRecordInput {
+                    sport_category: SportCategory::Finswimming,
+                    event_name: "50m Επιφάνεια".to_string(),
+                    record_kind: RecordKind::TimedDistance,
+                    pool_length_m: Some(50),
+                    distance_m: Some(50),
+                    duration_ms: Some(ms),
+                    value_metric: None,
+                    equipment: vec!["monofin".to_string(), "snorkel".to_string(), "mask".to_string()],
+                    competition_or_location: Some(comp.to_string()),
+                    achieved_at_ms: ts,
+                    notes: None,
+                },
+                ts,
+            )?;
+        }
+
+        // 2. 200m Επιφάνεια (Μονοπέδιλο) progression: 1:21.40 -> 1:18.80 -> 1:17.00 (-4.40s / +5.41%)
+        for (ts, ms, comp) in [
+            (sep_15_2026, 81_400, "Test Βάσης 200m"),
+            (oct_20_2026, 78_800, "Χειμερινή Ημερίδα"),
+            (nov_22_2026, 77_000, "Αγώνας Στόχος · PB"),
+        ] {
+            self.create_personal_record(
+                &CreatePersonalRecordInput {
+                    sport_category: SportCategory::Finswimming,
+                    event_name: "200m Επιφάνεια".to_string(),
+                    record_kind: RecordKind::TimedDistance,
+                    pool_length_m: Some(50),
+                    distance_m: Some(200),
+                    duration_ms: Some(ms),
+                    value_metric: None,
+                    equipment: vec!["monofin".to_string(), "snorkel".to_string(), "mask".to_string()],
+                    competition_or_location: Some(comp.to_string()),
+                    achieved_at_ms: ts,
+                    notes: None,
+                },
+                ts,
+            )?;
+        }
+
+        // 3. 400m Επιφάνεια (Μονοπέδιλο) progression: 2:59.20 -> 2:55.80 -> 2:53.59 (-5.61s / +3.13%)
+        for (ts, ms, comp) in [
+            (sep_15_2026, 179_200, "Test Αντοχής 400m"),
+            (oct_20_2026, 175_800, "Ημερίδα Ορίων"),
+            (nov_22_2026, 173_590, "Τελικός 400m · PB"),
+        ] {
+            self.create_personal_record(
+                &CreatePersonalRecordInput {
+                    sport_category: SportCategory::Finswimming,
+                    event_name: "400m Επιφάνεια".to_string(),
+                    record_kind: RecordKind::TimedDistance,
+                    pool_length_m: Some(50),
+                    distance_m: Some(400),
+                    duration_ms: Some(ms),
+                    value_metric: None,
+                    equipment: vec!["monofin".to_string(), "snorkel".to_string(), "mask".to_string()],
+                    competition_or_location: Some(comp.to_string()),
+                    achieved_at_ms: ts,
+                    notes: None,
+                },
+                ts,
+            )?;
+        }
 
         Ok(true)
     }

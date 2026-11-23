@@ -56,6 +56,7 @@ public final class L4NEAppStore: ObservableObject {
     @Published public var includeArchivedTemplates: Bool = false
     @Published public var selectedSportFilter: SportCategory? = nil
     @Published public var recentSessions: [SessionWithReps] = []
+    @Published public var recordProgressions: [EventRecordProgression] = []
     @Published public var workouts: [Workout] = []
     @Published public var healthSnapshots: [DailyHealthSnapshot] = []
     @Published public var healthContext: HealthContextSummary?
@@ -104,6 +105,7 @@ public final class L4NEAppStore: ObservableObject {
             }
             templates = try client.listTemplates(includeArchived: includeArchivedTemplates)
             recentSessions = try client.listSessions(templateId: nil)
+            recordProgressions = (try? client.listRecordProgressions()) ?? []
             workouts = try client.listWorkouts()
             healthSnapshots = try client.listHealthSnapshots()
             healthContext = try? client.getHealthContextSummary()
@@ -197,6 +199,28 @@ public final class L4NEAppStore: ObservableObject {
             _ = try client.deleteSession(sessionId: sessionId)
             L4NESoundHapticsEngine.shared.trigger(.deleteThud)
             lastStatusBanner = "Το session διαγράφηκε."
+            refreshAll()
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func createPersonalRecord(_ input: CreatePersonalRecordInput) {
+        do {
+            let created = try client.createPersonalRecord(input)
+            L4NESoundHapticsEngine.shared.trigger(.victoryFanfare)
+            lastStatusBanner = "Καταγράφηκε ρεκόρ στο '\(created.eventName)': \(created.formattedValue)."
+            refreshAll()
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func deletePersonalRecord(recordId: String) {
+        do {
+            _ = try client.deletePersonalRecord(recordId: recordId)
+            L4NESoundHapticsEngine.shared.trigger(.deleteThud)
+            lastStatusBanner = "Η επίδοση διαγράφηκε από τα ρεκόρ."
             refreshAll()
         } catch {
             lastErrorMessage = error.localizedDescription

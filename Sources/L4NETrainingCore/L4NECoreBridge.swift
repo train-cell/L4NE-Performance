@@ -467,6 +467,47 @@ public final class L4NECoreClient: @unchecked Sendable {
         return try execute(Request())
     }
 
+    /// Creates a new Personal Record / Race Result entry.
+    @discardableResult
+    public func createPersonalRecord(_ input: CreatePersonalRecordInput, nowMs: Int64? = nil) throws -> PersonalRecord {
+        struct Request: Encodable {
+            let action = "create_personal_record"
+            let payload: CreatePersonalRecordInput
+            let nowMs: Int64?
+        }
+        return try execute(Request(payload: input, nowMs: nowMs))
+    }
+
+    /// Deletes a Personal Record entry by ID.
+    @discardableResult
+    public func deletePersonalRecord(recordId: String) throws -> Bool {
+        struct Request: Encodable {
+            let action = "delete_personal_record"
+            let recordId: String
+        }
+        struct Response: Decodable {
+            let deleted: Bool
+        }
+        let res: Response = try execute(Request(recordId: recordId))
+        return res.deleted
+    }
+
+    /// Lists all Personal Record entries ordered by most recent first.
+    public func listPersonalRecords() throws -> [PersonalRecord] {
+        struct Request: Encodable {
+            let action = "list_personal_records"
+        }
+        return try execute(Request())
+    }
+
+    /// Lists all Event Record Progressions (Personal Best, Initial Baseline, Total Improvement % & Chronological History).
+    public func listRecordProgressions() throws -> [EventRecordProgression] {
+        struct Request: Encodable {
+            let action = "list_record_progressions"
+        }
+        return try execute(Request())
+    }
+
     // MARK: - Private FFI Execution Helpers
 
     private func execute<Req: Encodable, Res: Decodable>(_ request: Req) throws -> Res {

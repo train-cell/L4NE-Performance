@@ -753,3 +753,65 @@ pub struct DatabaseDiagnostics {
     pub workouts_count: i32,
     pub health_snapshots_count: i32,
 }
+
+/// Input payload for logging a new Personal Record / Race Result (`create_personal_record`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CreatePersonalRecordInput {
+    pub sport_category: SportCategory,
+    pub event_name: String,
+    #[serde(default = "default_record_kind_timed")]
+    pub record_kind: RecordKind,
+    pub pool_length_m: Option<i32>,
+    pub distance_m: Option<i32>,
+    pub duration_ms: Option<i64>,
+    pub value_metric: Option<f64>,
+    #[serde(default)]
+    pub equipment: Vec<String>,
+    pub competition_or_location: Option<String>,
+    pub achieved_at_ms: i64,
+    pub notes: Option<String>,
+}
+
+fn default_record_kind_timed() -> RecordKind {
+    RecordKind::TimedDistance
+}
+
+/// Stored Personal Record entry representing an official race or benchmark test result at a point in time.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PersonalRecord {
+    pub id: String,
+    pub sport_category: SportCategory,
+    pub event_name: String,
+    pub record_kind: RecordKind,
+    pub pool_length_m: Option<i32>,
+    pub distance_m: Option<i32>,
+    pub duration_ms: Option<i64>,
+    pub formatted_value: String,
+    pub pace_ms_per_100m: Option<i64>,
+    pub value_metric: Option<f64>,
+    pub equipment: Vec<String>,
+    pub competition_or_location: Option<String>,
+    pub achieved_at_ms: i64,
+    pub date_iso: String,
+    pub notes: Option<String>,
+    pub created_at_ms: i64,
+}
+
+/// Chronological progression and cumulative improvement summary for an athletic Event over time.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EventRecordProgression {
+    pub event_key: String,
+    pub event_name: String,
+    pub sport_category: SportCategory,
+    pub record_kind: RecordKind,
+    pub pool_length_m: Option<i32>,
+    pub distance_m: Option<i32>,
+    pub entries_count: usize,
+    pub personal_best: PersonalRecord,
+    pub initial_record: PersonalRecord,
+    pub latest_record: PersonalRecord,
+    pub total_delta_ms: Option<i64>,
+    pub total_improvement_pct: f64,
+    pub formatted_total_delta: String,
+    pub history_chronological: Vec<PersonalRecord>,
+}
