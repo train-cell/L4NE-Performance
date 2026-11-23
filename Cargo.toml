@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/l4ne-core",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["John Akrivos <293213536+train-cell@users.noreply.github.com>"]
+license = "GPL-3.0-only"
+repository = "https://github.com/train-cell/L4NE-Performance"

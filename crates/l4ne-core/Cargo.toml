@@ -1,0 +1,20 @@
+[package]
+name = "l4ne-core"
+description = "L4NE Performance — 100% Deterministic, Local-First Athletic Training & Analytics Core Engine (iOS & Android)"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "l4ne_core"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "1.0"
+uuid = { version = "1.10", features = ["v4", "v7", "serde"] }

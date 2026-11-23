@@ -1,0 +1,31 @@
+# Rust / Cargo
+/target/
+**/target/
+
+# Swift / Xcode
+/.build/
+/.swiftpm/
+**/DerivedData/
+**/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Static library build artifacts generated during local builds
+/dist/
+*.o
+
+# Local SQLite databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# macOS / Editor
+.DS_Store
+.idea/
+.vscode/
