@@ -22,10 +22,18 @@ All notable changes to **L4NE Performance (`L4NE Training`)** are documented in 
   - Seeded all 3 explicit template protocols from Overview Section 3 (`8×50m — 30s rest, monofin`, `6×100m — 60s rest`, `6×100m — 30s rest`) plus Pyramid (`50-100-150-100-50m`) and Compound Send-Off (`4×[2×50+100]`).
   - Added `set_workout_standalone` (`Keep Standalone`) and live `associated_templates_count` (`Associated templates: N`) on imported workouts.
   - Added `INFOPLIST_KEY_NSHealthShareUsageDescription` and `INFOPLIST_KEY_NSHealthUpdateUsageDescription` to `L4NETraining.xcodeproj`.
+- **Segmented PCr Race Predictor & Interactive Recalculator (`calculate_pcr_prediction` & `PcrRecalculatorSheet`):**
+  - Implemented the Segmented PCr Model (`Recovery = 1 - e^(-t/τ)`, `Δ = k·Recovery + FF`, `τ = 28s`, `k = 0.16` for 200m, `k = 0.13` for 400m) in `crates/l4ne-core/src/analytics.rs`.
+  - Automatically distinguishes **Segmented PCr Mode** (0% penalty on Segment 1 when `d_1 > 150m`, matching Case Study A `200m + 20s + 150m → 2:53.59`) and **Symmetric Broken Set Mode** (matching Case Study B `4×50m @ 15s → 76.99s / 1:17.00`).
+  - Automatically derives `200m`, `400m`, and `800m` PCr Race Predictions per template (`4×50m → 200m & 400m`, `8×50m → 200m & 400m`, `4×100m → 200m & 400m`, `6×100m → 200m & 400m`, Pyramid & Compound sets).
+- **Left-to-Right Centisecond Numpad, Sport-Specific Equipment Catalog & Template Deletion:**
+  - Updated `parse_athletic_numpad` to parse progressively from left to right (`"3"` → `3.00s`, `"32"` → `32.00s`, `"324"` → `32.40s`, `"3240"` → `32.40s`).
+  - Added full sport-specific equipment catalogs for **Τεχνική Κολύμβηση** (`Μονοπέδιλο`, `Αναπνευστήρας`, `Μάσκα`, `Φιάλη Οξυγόνου`, `Διπλά Πέδιλα`, `Σανίδα`), **Κλασική Κολύμβηση** (`Γυαλάκια`, `Χεράκια (Paddles)`, `Pull Buoy`, `Σανίδα (Kickboard)`, `Πεδιλάκια Κολύμβησης`, `Αναπνευστήρας`, `Αλεξίπτωτο Αντίστασης`), **Στίβο (Track)**, **Κονίστρα (Field)**, and **Γυμναστήριο (Gym)**.
+  - Added transactional `delete_template` across Rust SQLite, C-FFI, and SwiftUI (`Cockpit`, `TemplatesLibraryView`, and `TemplateBuilderSheet`).
 - **Verification:**
-  - Rust Core unit & integration suite: **7/7 PASS** (0 warnings).
-  - Swift 6 + Rust C-FFI Full-Stack Verification Runner (`L4NETestRunner`): **8/8 GATES PASS (100%)**.
-  - Native `L4NETrainingApp` executable compilation & `L4NETraining.xcodeproj` generation: **PASS**.
+  - Rust Core unit & integration suite: **8/8 PASS** (0 warnings).
+  - Swift 6 + Rust C-FFI Full-Stack Verification Runner (`L4NETestRunner`): **9/9 GATES PASS (100%)**.
+  - Native `L4NETrainingApp` executable compilation & `L4NETraining.xcodeproj` iOS Simulator build: **PASS**.
 
 ---
 

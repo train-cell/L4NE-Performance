@@ -170,8 +170,9 @@ def generate_pbxproj():
 			isa = XCBuildConfiguration;
 			buildSettings = {{
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Training διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ντετερμινιστική ανάλυση απόδοσης τοπικά στη συσκευή.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Το L4NE Training αποθηκεύει προαιρετικά τις καταγεγραμμένες προπονήσεις σου στο Apple Health ως HKWorkout.";
+				INFOPLIST_KEY_CFBundleDisplayName = "L4NE Performance";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Performance διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ανάλυση απόδοσης.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Το L4NE Performance αποθηκεύει προαιρετικά τις καταγεγραμμένες προπονήσεις σου στο Apple Health ως HKWorkout.";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				LIBRARY_SEARCH_PATHS = (
@@ -195,8 +196,9 @@ def generate_pbxproj():
 			isa = XCBuildConfiguration;
 			buildSettings = {{
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Training διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ντετερμινιστική ανάλυση απόδοσης τοπικά στη συσκευή.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Το L4NE Training αποθηκεύει προαιρετικά τις καταγεγραμμένες προπονήσεις σου στο Apple Health ως HKWorkout.";
+				INFOPLIST_KEY_CFBundleDisplayName = "L4NE Performance";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Performance διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ανάλυση απόδοσης.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Το L4NE Performance αποθηκεύει προαιρετικά τις καταγεγραμμένες προπονήσεις σου στο Apple Health ως HKWorkout.";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				LIBRARY_SEARCH_PATHS = (

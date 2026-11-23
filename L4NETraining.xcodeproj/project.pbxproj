@@ -12,6 +12,7 @@
 		C43F28466F1956DA8CF4CF90 /* L4NEModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A288B59AD2C35DD0AFB5E651 /* L4NEModels.swift */; };
 		A8C6735B9CE35F5082AF80AD /* L4NEAppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE4416AF61C58A0B95331BE /* L4NEAppStore.swift */; };
 		5F0A524AA3035414BA2E8A10 /* L4NELivePoolsideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96529DB6C46A501C9EE08BD1 /* L4NELivePoolsideView.swift */; };
+		BD31F2FFEB9E5F868C6D9524 /* L4NEMotionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4365D3E373E2543FBEB609CB /* L4NEMotionEngine.swift */; };
 		A384123E7D685D86B58C894A /* L4NEScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4514AD3C7AA53978621B625 /* L4NEScreens.swift */; };
 		B6FD8E4DF63A562E96D809D8 /* L4NETheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6954C94ED11355C98765787D /* L4NETheme.swift */; };
 		27AB10FD106C5DD89A8FF51B /* L4NETrainingApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61CFEACD76635421B1D0AD7B /* L4NETrainingApp.swift */; };
@@ -23,6 +24,7 @@
 		A288B59AD2C35DD0AFB5E651 /* L4NEModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingCore/L4NEModels.swift"; sourceTree = "<group>"; };
 		DAE4416AF61C58A0B95331BE /* L4NEAppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingUI/L4NEAppStore.swift"; sourceTree = "<group>"; };
 		96529DB6C46A501C9EE08BD1 /* L4NELivePoolsideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingUI/L4NELivePoolsideView.swift"; sourceTree = "<group>"; };
+		4365D3E373E2543FBEB609CB /* L4NEMotionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingUI/L4NEMotionEngine.swift"; sourceTree = "<group>"; };
 		A4514AD3C7AA53978621B625 /* L4NEScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingUI/L4NEScreens.swift"; sourceTree = "<group>"; };
 		6954C94ED11355C98765787D /* L4NETheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingUI/L4NETheme.swift"; sourceTree = "<group>"; };
 		61CFEACD76635421B1D0AD7B /* L4NETrainingApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/L4NETrainingApp/L4NETrainingApp.swift"; sourceTree = "<group>"; };
@@ -38,6 +40,7 @@
 				A288B59AD2C35DD0AFB5E651 /* L4NEModels.swift */,
 				DAE4416AF61C58A0B95331BE /* L4NEAppStore.swift */,
 				96529DB6C46A501C9EE08BD1 /* L4NELivePoolsideView.swift */,
+				4365D3E373E2543FBEB609CB /* L4NEMotionEngine.swift */,
 				A4514AD3C7AA53978621B625 /* L4NEScreens.swift */,
 				6954C94ED11355C98765787D /* L4NETheme.swift */,
 				61CFEACD76635421B1D0AD7B /* L4NETrainingApp.swift */,
@@ -101,6 +104,7 @@
 				C43F28466F1956DA8CF4CF90 /* L4NEModels.swift in Sources */,
 				A8C6735B9CE35F5082AF80AD /* L4NEAppStore.swift in Sources */,
 				5F0A524AA3035414BA2E8A10 /* L4NELivePoolsideView.swift in Sources */,
+				BD31F2FFEB9E5F868C6D9524 /* L4NEMotionEngine.swift in Sources */,
 				A384123E7D685D86B58C894A /* L4NEScreens.swift in Sources */,
 				B6FD8E4DF63A562E96D809D8 /* L4NETheme.swift in Sources */,
 				27AB10FD106C5DD89A8FF51B /* L4NETrainingApp.swift in Sources */,
@@ -136,8 +140,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Training διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ντετερμινιστική ανάλυση απόδοσης τοπικά στη συσκευή.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Το L4NE Training αποθηκεύει προαιρετικά τις καταγεγραμμένες προπονήσεις σου στο Apple Health ως HKWorkout.";
+				INFOPLIST_KEY_CFBundleDisplayName = "L4NE Performance";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Performance διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ανάλυση απόδοσης.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Το L4NE Performance αποθηκεύει προαιρετικά τις καταγεγραμμένες προπονήσεις σου στο Apple Health ως HKWorkout.";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				LIBRARY_SEARCH_PATHS = (
@@ -161,8 +166,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Training διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ντετερμινιστική ανάλυση απόδοσης τοπικά στη συσκευή.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Το L4NE Training αποθηκεύει προαιρετικά τις καταγεγραμμένες προπονήσεις σου στο Apple Health ως HKWorkout.";
+				INFOPLIST_KEY_CFBundleDisplayName = "L4NE Performance";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Το L4NE Performance διαβάζει προαιρετικά προπονήσεις, καρδιακή συχνότητα, ύπνο και HRV από το Apple Health για ανάλυση απόδοσης.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Το L4NE Performance αποθηκεύει προαιρετικά τις καταγεγραμμένες προπονήσεις σου στο Apple Health ως HKWorkout.";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				LIBRARY_SEARCH_PATHS = (

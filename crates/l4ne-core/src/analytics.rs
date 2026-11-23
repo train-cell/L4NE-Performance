@@ -6,8 +6,10 @@
 //! - Field Throws & Jumps (`distance_attempt`: best attempt, average, progression)
 //! - Gym Strength Training (`weight_reps`: total tonnage kg, Epley estimated 1RM kg, average RPE)
 
+use crate::engine::format_duration_ms;
 use crate::models::{
-    DailyHealthSnapshot, ExpectedRepSlot, HealthContextSummary, RepRecord, RestMode,
+    CoreError, DailyHealthSnapshot, ExpectedRepSlot, HealthContextSummary, PcrPredictionResult,
+    PcrRecalculatorInput, PcrSegmentBreakdown, PcrSegmentInput, RepRecord, RestMode,
     SessionComparison, SessionHealthCorrelationNote, SessionSummaryMetrics, SessionWithReps,
     SlotDelta, TemplateAnalyticsReport, TemplateWithVersion,
 };
@@ -468,6 +470,9 @@ pub fn compute_template_analytics(
         }
     }
 
+    let pcr_predictions =
+        compute_template_pcr_predictions(template, sessions_chronological_desc);
+
     TemplateAnalyticsReport {
         template_id: template.id.clone(),
         template_name: template.name.clone(),
@@ -484,7 +489,543 @@ pub fn compute_template_analytics(
         latest_vs_previous,
         latest_vs_personal_best,
         health_correlations,
+        pcr_predictions,
     }
+}
+
+/// Default PCr time constant `τ = 28.0s` (`ΤΗΕ ΘΕΩΡΙ.txt` §2 & `broken_set.py`).
+pub const PCR_TAU_DEFAULT_SEC: f64 = 28.0;
+/// Oracle 200m -> 400m conversion factor (`broken_set.py`).
+pub const PCR_ORACLE_200_TO_400_RATIO: f64 = 2.17;
+
+/// Returns the default distance coefficient `k` for a target race distance (`ΤΗΕ ΘΕΩΡΙ.txt` §2):
+/// - `200m` (and `<= 200m`): `k = 0.16`
+/// - `400m`: `k = 0.13`
+/// - `>= 800m`: `k = 0.11`
+pub fn default_pcr_k_for_distance(target_distance_m: i32) -> f64 {
+    if target_distance_m <= 200 {
+        0.16
+    } else if target_distance_m <= 400 {
+        0.13
+    } else {
+        0.11
+    }
+}
+
+/// Evaluates the Segmented PCr Race Prediction Model (`ΤΗΕ ΘΕΩΡΙ.txt` v2.0).
+///
+/// Rules:
+/// 1. `Recovery(t) = 1 - e^(-t / τ)` where `t` is rest in seconds and `τ = 28.0s` (default).
+/// 2. `Δ = (k * Recovery) + FF` where `k = 0.16` (200m) or `0.13` (400m), and `FF = 0.00` (`t < 20s`)
+///    or `0.015` (`t >= 20s` after deep lactic load).
+/// 3. **Segmented Penalty Rule (§1 & §4)**:
+///    - If the first segment is `> 150m` continuous (e.g. `200m + 20s stop + 150m`), Segment 1 receives
+///      **0% penalty** (`Δ_1 = 0`), and the penalty `Δ_i` is applied strictly to segments following a rest stop.
+///      Any remaining distance `target_distance_m - swum_distance_m` (e.g. `50m` in a `350m -> 400m` set)
+///      is added via `tail_override_ms` or heavy-fatigue tail pace extrapolation.
+///    - If all segments are `<= 150m` (e.g. `4×50m`, `8×50m`, `4×100m`), applies the symmetric broken set
+///      penalty `T_race = T_broken * (1 + Δ)`.
+pub fn calculate_pcr_prediction(
+    input: &PcrRecalculatorInput,
+) -> Result<PcrPredictionResult, CoreError> {
+    if input.target_distance_m <= 0 {
+        return Err(CoreError::Validation(
+            "Target distance must be > 0m".to_string(),
+        ));
+    }
+    if input.segments.is_empty() {
+        return Err(CoreError::Validation(
+            "PCr Recalculator requires at least one segment".to_string(),
+        ));
+    }
+    for (idx, s) in input.segments.iter().enumerate() {
+        if s.distance_m <= 0 || s.duration_ms <= 0 {
+            return Err(CoreError::Validation(format!(
+                "Segment #{} distance and duration must be > 0",
+                idx + 1
+            )));
+        }
+    }
+
+    let tau = input
+        .tau_seconds
+        .filter(|&v| v > 0.0 && v.is_finite())
+        .unwrap_or(PCR_TAU_DEFAULT_SEC);
+    let k = input
+        .custom_k
+        .filter(|&v| v > 0.0 && v.is_finite())
+        .unwrap_or_else(|| default_pcr_k_for_distance(input.target_distance_m));
+
+    let swum_distance_m: i32 = input.segments.iter().map(|s| s.distance_m).sum();
+    let raw_broken_time_ms: i64 = input.segments.iter().map(|s| s.duration_ms).sum();
+    let is_segmented_mode = input.segments[0].distance_m > 150;
+
+    let mut breakdowns = Vec::with_capacity(input.segments.len());
+
+    if is_segmented_mode {
+        let mut total_adjusted_ms = 0i64;
+        let mut rest_sum_sec = 0.0f64;
+        let mut rest_count = 0usize;
+        let mut last_rec = 0.0f64;
+        let mut last_delta_pct = 0.0f64;
+        let mut last_ff = 0.0f64;
+
+        for (idx, seg) in input.segments.iter().enumerate() {
+            if idx == 0 {
+                total_adjusted_ms += seg.duration_ms;
+                breakdowns.push(PcrSegmentBreakdown {
+                    segment_index: 1,
+                    distance_m: seg.distance_m,
+                    raw_duration_ms: seg.duration_ms,
+                    rest_before_sec: 0.0,
+                    recovery_factor: 0.0,
+                    penalty_delta_pct: 0.0,
+                    adjusted_duration_ms: seg.duration_ms,
+                    note: "Τμήμα 1 (>150m): Καθαρός αγωνιστικός χρόνος (0% ποινή)".to_string(),
+                });
+            } else {
+                let t_sec = (seg.rest_before_ms.max(0) as f64) / 1000.0;
+                rest_sum_sec += t_sec;
+                rest_count += 1;
+                let rec = if t_sec > 0.0 {
+                    1.0 - (-t_sec / tau).exp()
+                } else {
+                    0.0
+                };
+                let ff = input
+                    .custom_ff
+                    .unwrap_or(if t_sec >= 20.0 { 0.015 } else { 0.0 });
+                // Match Case Study A 4-decimal truncation: 0.13 * 0.510459 + 0.015 = 0.081359 -> 0.0813 (8.13%)
+                let delta = ((k * rec + ff) * 10_000.0).floor() / 10_000.0;
+                let delta_pct = round2(delta * 100.0);
+                let adj_ms = (((seg.duration_ms as f64) * (1.0 + delta)) / 10.0).floor() as i64 * 10;
+                total_adjusted_ms += adj_ms;
+                last_rec = rec;
+                last_delta_pct = delta_pct;
+                last_ff = ff;
+
+                breakdowns.push(PcrSegmentBreakdown {
+                    segment_index: (idx + 1) as i32,
+                    distance_m: seg.distance_m,
+                    raw_duration_ms: seg.duration_ms,
+                    rest_before_sec: round2(t_sec),
+                    recovery_factor: round2(rec * 100.0),
+                    penalty_delta_pct: delta_pct,
+                    adjusted_duration_ms: adj_ms,
+                    note: format!(
+                        "Δ = {:.2}% (t={:.0}s, τ={:.0}s, k={:.2}, FF={:.3})",
+                        delta_pct, t_sec, tau, k, ff
+                    ),
+                });
+            }
+        }
+
+        let missing_m = (input.target_distance_m - swum_distance_m).max(0);
+        let extrapolated_tail_ms = if missing_m > 0 {
+            if let Some(override_ms) = input.tail_override_ms {
+                override_ms.max(0)
+            } else {
+                let last_seg = breakdowns.last().unwrap();
+                let tail_est = (last_seg.adjusted_duration_ms as f64 / last_seg.distance_m as f64)
+                    * (missing_m as f64)
+                    * 0.9770;
+                ((tail_est / 10.0).round() as i64) * 10
+            }
+        } else {
+            0
+        };
+
+        if missing_m > 0 {
+            breakdowns.push(PcrSegmentBreakdown {
+                segment_index: (breakdowns.len() + 1) as i32,
+                distance_m: missing_m,
+                raw_duration_ms: extrapolated_tail_ms,
+                rest_before_sec: 0.0,
+                recovery_factor: 0.0,
+                penalty_delta_pct: 0.0,
+                adjusted_duration_ms: extrapolated_tail_ms,
+                note: format!("Εκτίμηση υπολειπόμενων {}m (heavy fatigue)", missing_m),
+            });
+        }
+
+        let predicted_race_time_ms = total_adjusted_ms + extrapolated_tail_ms;
+        let avg_rest_sec = if rest_count > 0 {
+            round2(rest_sum_sec / (rest_count as f64))
+        } else {
+            0.0
+        };
+        let predicted_pace_ms_per_100m =
+            ((predicted_race_time_ms as f64 / input.target_distance_m as f64) * 100.0).round()
+                as i64;
+
+        Ok(PcrPredictionResult {
+            target_distance_m: input.target_distance_m,
+            label: input.label.clone().unwrap_or_else(|| {
+                format!(
+                    "Πρόβλεψη {}m (Segmented PCr)",
+                    input.target_distance_m
+                )
+            }),
+            model_mode: "segmented_pcr".to_string(),
+            tau_seconds: tau,
+            k_coefficient: k,
+            fatigue_factor: last_ff,
+            swum_distance_m,
+            raw_broken_time_ms,
+            average_rest_sec: avg_rest_sec,
+            recovery_factor: round2(last_rec * 100.0),
+            penalty_delta_pct: last_delta_pct,
+            extrapolated_tail_distance_m: missing_m,
+            extrapolated_tail_ms,
+            predicted_race_time_ms,
+            formatted_predicted_time: format_duration_ms(predicted_race_time_ms),
+            predicted_pace_ms_per_100m,
+            segments: breakdowns,
+        })
+    } else {
+        // Symmetric / Homogeneous Broken Set Mode (e.g. 4x50m -> 200m, 8x50m -> 400m, 4x100m -> 400m)
+        let rest_values_sec: Vec<f64> = if input.segments.len() > 1 {
+            input.segments[1..]
+                .iter()
+                .map(|s| (s.rest_before_ms.max(0) as f64) / 1000.0)
+                .collect()
+        } else {
+            vec![(input.segments[0].rest_before_ms.max(0) as f64) / 1000.0]
+        };
+
+        let avg_rest_sec = if !rest_values_sec.is_empty() {
+            rest_values_sec.iter().sum::<f64>() / (rest_values_sec.len() as f64)
+        } else {
+            0.0
+        };
+
+        let rec = if avg_rest_sec > 0.0 {
+            1.0 - (-avg_rest_sec / tau).exp()
+        } else {
+            0.0
+        };
+
+        let ff = input.custom_ff.unwrap_or_else(|| {
+            if avg_rest_sec >= 20.0 && input.target_distance_m >= 400 {
+                0.015
+            } else {
+                0.0
+            }
+        });
+
+        let delta = ((k * rec + ff) * 10_000.0).round() / 10_000.0;
+        let delta_pct = round2(delta * 100.0);
+
+        for (idx, seg) in input.segments.iter().enumerate() {
+            let t_sec = if idx == 0 {
+                0.0
+            } else {
+                (seg.rest_before_ms.max(0) as f64) / 1000.0
+            };
+            let seg_adj_ms =
+                (((seg.duration_ms as f64) * (1.0 + delta)) / 10.0).round() as i64 * 10;
+            breakdowns.push(PcrSegmentBreakdown {
+                segment_index: (idx + 1) as i32,
+                distance_m: seg.distance_m,
+                raw_duration_ms: seg.duration_ms,
+                rest_before_sec: round2(t_sec),
+                recovery_factor: round2(rec * 100.0),
+                penalty_delta_pct: delta_pct,
+                adjusted_duration_ms: seg_adj_ms,
+                note: format!("Broken Rep #{} (+{:.2}% PCr)", idx + 1, delta_pct),
+            });
+        }
+
+        let distance_scale = (input.target_distance_m as f64) / (swum_distance_m as f64);
+        let predicted_race_time_ms =
+            (((raw_broken_time_ms as f64) * distance_scale * (1.0 + delta)) / 10.0).round()
+                as i64
+                * 10;
+        let predicted_pace_ms_per_100m =
+            ((predicted_race_time_ms as f64 / input.target_distance_m as f64) * 100.0).round()
+                as i64;
+
+        Ok(PcrPredictionResult {
+            target_distance_m: input.target_distance_m,
+            label: input.label.clone().unwrap_or_else(|| {
+                format!(
+                    "Πρόβλεψη {}m ({}×{}m Broken)",
+                    input.target_distance_m,
+                    input.segments.len(),
+                    input.segments[0].distance_m
+                )
+            }),
+            model_mode: "symmetric_broken".to_string(),
+            tau_seconds: tau,
+            k_coefficient: k,
+            fatigue_factor: ff,
+            swum_distance_m,
+            raw_broken_time_ms,
+            average_rest_sec: round2(avg_rest_sec),
+            recovery_factor: round2(rec * 100.0),
+            penalty_delta_pct: delta_pct,
+            extrapolated_tail_distance_m: (input.target_distance_m - swum_distance_m).max(0),
+            extrapolated_tail_ms: 0,
+            predicted_race_time_ms,
+            formatted_predicted_time: format_duration_ms(predicted_race_time_ms),
+            predicted_pace_ms_per_100m,
+            segments: breakdowns,
+        })
+    }
+}
+
+/// Finds the fastest contiguous window of segments whose distances sum to `target_window_m`.
+fn find_best_segment_window(
+    all_segments: &[PcrSegmentInput],
+    target_window_m: i32,
+) -> Option<Vec<PcrSegmentInput>> {
+    let mut best_window: Option<(i64, Vec<PcrSegmentInput>)> = None;
+    for start in 0..all_segments.len() {
+        let mut dist_sum = 0i32;
+        let mut time_sum = 0i64;
+        let mut window = Vec::new();
+        for idx in start..all_segments.len() {
+            let mut seg = all_segments[idx].clone();
+            if window.is_empty() {
+                seg.rest_before_ms = 0;
+            }
+            dist_sum += seg.distance_m;
+            time_sum += seg.duration_ms;
+            window.push(seg);
+            if dist_sum == target_window_m {
+                if best_window
+                    .as_ref()
+                    .map_or(true, |(best_t, _)| time_sum < *best_t)
+                {
+                    best_window = Some((time_sum, window));
+                }
+                break;
+            }
+            if dist_sum > target_window_m {
+                break;
+            }
+        }
+    }
+    best_window.map(|(_, w)| w)
+}
+
+/// Automatically derives Segmented PCr Race Predictions (`200m`, `400m`, `800m`) for a Template
+/// using its fastest/latest logged session (or block target durations when no sessions exist yet).
+pub fn compute_template_pcr_predictions(
+    template: &TemplateWithVersion,
+    sessions_chronological_desc: &[SessionWithReps],
+) -> Vec<PcrPredictionResult> {
+    use crate::engine::expand_template_slots;
+    use crate::models::TemplateBlockInput;
+
+    let block_inputs: Vec<TemplateBlockInput> = template
+        .active_version
+        .blocks
+        .iter()
+        .map(|b| TemplateBlockInput {
+            repeat_count: b.repeat_count,
+            record_kind: b.record_kind,
+            distance_m: b.distance_m,
+            stroke_or_movement: b.stroke_or_movement.clone(),
+            rest_mode: b.rest_mode,
+            rest_or_sendoff_ms: b.rest_or_sendoff_ms,
+            target_duration_ms: b.target_duration_ms,
+        })
+        .collect();
+
+    let Ok(slots) = expand_template_slots(template.active_version.rounds, &block_inputs) else {
+        return Vec::new();
+    };
+
+    // Build segment list from the latest timed session (or from template target durations)
+    let latest_timed_session = sessions_chronological_desc
+        .iter()
+        .find(|s| s.metrics.total_active_duration_ms > 0);
+
+    let mut raw_segments = Vec::new();
+    if let Some(session) = latest_timed_session {
+        let slot_by_idx: HashMap<i32, &ExpectedRepSlot> =
+            slots.iter().map(|s| (s.slot_index, s)).collect();
+        let mut prev_rest_ms = 0i64;
+        for rep in session.reps.iter().filter(|r| !r.is_skipped) {
+            let Some(dist) = rep.distance_m else { continue };
+            let Some(dur) = rep.duration_ms else { continue };
+            if dist <= 0 || dur <= 0 {
+                continue;
+            }
+            let rest_before = if raw_segments.is_empty() {
+                0
+            } else {
+                prev_rest_ms
+            };
+            raw_segments.push(PcrSegmentInput {
+                distance_m: dist,
+                duration_ms: dur,
+                rest_before_ms: rest_before,
+            });
+            prev_rest_ms = rep
+                .actual_rest_ms
+                .or_else(|| slot_by_idx.get(&rep.slot_index).map(|s| s.rest_or_sendoff_ms))
+                .unwrap_or(30_000);
+        }
+    } else {
+        let mut prev_rest_ms = 0i64;
+        for slot in &slots {
+            let Some(dist) = slot.distance_m else { continue };
+            let dur_opt = slot.target_duration_ms.or_else(|| {
+                template
+                    .active_version
+                    .target_pace_ms_per_100m
+                    .map(|pace| (pace * (dist as i64)) / 100)
+            });
+            let Some(dur) = dur_opt else { continue };
+            if dist <= 0 || dur <= 0 {
+                continue;
+            }
+            let rest_before = if raw_segments.is_empty() {
+                0
+            } else {
+                prev_rest_ms
+            };
+            raw_segments.push(PcrSegmentInput {
+                distance_m: dist,
+                duration_ms: dur,
+                rest_before_ms: rest_before,
+            });
+            prev_rest_ms = match slot.rest_mode {
+                RestMode::FixedRest => slot.rest_or_sendoff_ms,
+                RestMode::SendOff => (slot.rest_or_sendoff_ms - dur).max(10_000),
+            };
+        }
+    }
+
+    if raw_segments.is_empty() {
+        return Vec::new();
+    }
+
+    let total_dist: i32 = raw_segments.iter().map(|s| s.distance_m).sum();
+    let mut predictions = Vec::new();
+
+    // Case 1: Asymmetric Segmented set starting with > 150m (e.g. Case Study A: 200m + 150m -> 400m)
+    if raw_segments[0].distance_m > 150 {
+        let target_m = if total_dist <= 400 { 400 } else { total_dist };
+        if let Ok(pred) = calculate_pcr_prediction(&PcrRecalculatorInput {
+            target_distance_m: target_m,
+            label: Some(format!("Πρόβλεψη {}m (Segmented PCr)", target_m)),
+            tau_seconds: Some(PCR_TAU_DEFAULT_SEC),
+            custom_k: None,
+            custom_ff: None,
+            tail_override_ms: None,
+            segments: raw_segments.clone(),
+        }) {
+            predictions.push(pred);
+        }
+        return predictions;
+    }
+
+    // Case 2: 200m Prediction (from 4x50m, 2x100m, or best 200m window inside 8x50m / 6x100m / Pyramid)
+    if let Some(win_200) = find_best_segment_window(&raw_segments, 200) {
+        let label_200 = if win_200.iter().all(|s| s.distance_m == win_200[0].distance_m) {
+            format!(
+                "Πρόβλεψη 200m ({}×{}m PCr)",
+                win_200.len(),
+                win_200[0].distance_m
+            )
+        } else {
+            "Πρόβλεψη 200m (Broken 200m PCr)".to_string()
+        };
+        if let Ok(pred_200) = calculate_pcr_prediction(&PcrRecalculatorInput {
+            target_distance_m: 200,
+            label: Some(label_200),
+            tau_seconds: Some(PCR_TAU_DEFAULT_SEC),
+            custom_k: Some(0.16),
+            custom_ff: None,
+            tail_override_ms: None,
+            segments: win_200,
+        }) {
+            // If the template is pure 200m total (e.g. 4x50m), also add the 400m Oracle extrapolation (200m * 2.17)
+            let oracle_400_ms =
+                (((pred_200.predicted_race_time_ms as f64) * PCR_ORACLE_200_TO_400_RATIO) / 10.0)
+                    .round() as i64
+                    * 10;
+            predictions.push(pred_200.clone());
+            if total_dist < 400 {
+                predictions.push(PcrPredictionResult {
+                    target_distance_m: 400,
+                    label: "Πρόβλεψη 400m (Oracle ×2.17 από 200m)".to_string(),
+                    model_mode: "oracle_200_to_400".to_string(),
+                    tau_seconds: pred_200.tau_seconds,
+                    k_coefficient: 0.13,
+                    fatigue_factor: pred_200.fatigue_factor,
+                    swum_distance_m: 200,
+                    raw_broken_time_ms: pred_200.raw_broken_time_ms,
+                    average_rest_sec: pred_200.average_rest_sec,
+                    recovery_factor: pred_200.recovery_factor,
+                    penalty_delta_pct: pred_200.penalty_delta_pct,
+                    extrapolated_tail_distance_m: 200,
+                    extrapolated_tail_ms: oracle_400_ms - pred_200.predicted_race_time_ms,
+                    predicted_race_time_ms: oracle_400_ms,
+                    formatted_predicted_time: format_duration_ms(oracle_400_ms),
+                    predicted_pace_ms_per_100m: oracle_400_ms / 4,
+                    segments: pred_200.segments,
+                });
+            }
+        }
+    }
+
+    // Case 3: 400m Prediction (from 8x50m, 4x100m, or best 400m window inside 6x100m / Pyramid / Compound)
+    if let Some(win_400) = find_best_segment_window(&raw_segments, 400) {
+        let label_400 = if win_400.iter().all(|s| s.distance_m == win_400[0].distance_m) {
+            format!(
+                "Πρόβλεψη 400m ({}×{}m PCr)",
+                win_400.len(),
+                win_400[0].distance_m
+            )
+        } else {
+            "Πρόβλεψη 400m (Broken 400m PCr)".to_string()
+        };
+        if let Ok(pred_400) = calculate_pcr_prediction(&PcrRecalculatorInput {
+            target_distance_m: 400,
+            label: Some(label_400),
+            tau_seconds: Some(PCR_TAU_DEFAULT_SEC),
+            custom_k: Some(0.13),
+            custom_ff: None,
+            tail_override_ms: None,
+            segments: win_400,
+        }) {
+            predictions.push(pred_400);
+        }
+    } else if total_dist >= 350 {
+        // E.g. 450m Pyramid (50+100+150+100+50): normalize total broken set to 400m with PCr penalty
+        if let Ok(pred_400) = calculate_pcr_prediction(&PcrRecalculatorInput {
+            target_distance_m: 400,
+            label: Some(format!("Πρόβλεψη 400m (από {}m Set)", total_dist)),
+            tau_seconds: Some(PCR_TAU_DEFAULT_SEC),
+            custom_k: Some(0.13),
+            custom_ff: None,
+            tail_override_ms: None,
+            segments: raw_segments.clone(),
+        }) {
+            predictions.push(pred_400);
+        }
+    }
+
+    // Case 4: 800m Prediction if total_dist >= 800m (e.g. 4x[2x50m + 1x100m] = 800m)
+    if let Some(win_800) = find_best_segment_window(&raw_segments, 800) {
+        if let Ok(pred_800) = calculate_pcr_prediction(&PcrRecalculatorInput {
+            target_distance_m: 800,
+            label: Some("Πρόβλεψη 800m (Broken 800m PCr)".to_string()),
+            tau_seconds: Some(PCR_TAU_DEFAULT_SEC),
+            custom_k: Some(0.11),
+            custom_ff: None,
+            tail_override_ms: None,
+            segments: win_800,
+        }) {
+            predictions.push(pred_800);
+        }
+    }
+
+    predictions
 }
 
 /// Computes the deterministic `HealthContextSummary` (Screen 7 — Health Context & Bevel Rings)

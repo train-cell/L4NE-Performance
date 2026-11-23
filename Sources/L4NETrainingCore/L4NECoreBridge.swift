@@ -72,7 +72,22 @@ public enum L4NEDurationFormatter {
     }
 }
 
-/// Direct Swift 6 FFI Client (v1.1) backed by the compiled Rust library (`libl4ne_core.a`).
+private struct L4NECodingKey: CodingKey {
+    var stringValue: String
+    var intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = "\(intValue)"
+        self.intValue = intValue
+    }
+}
+
+/// Direct Swift 6 FFI Client (v1.3) backed by the compiled Rust library (`libl4ne_core.a`).
 public final class L4NECoreClient: @unchecked Sendable {
     public let databasePath: String
     private let encoder: JSONEncoder
@@ -85,7 +100,20 @@ public final class L4NECoreClient: @unchecked Sendable {
         self.encoder = enc
 
         let dec = JSONDecoder()
-        dec.keyDecodingStrategy = .convertFromSnakeCase
+        dec.keyDecodingStrategy = .custom { keys in
+            let raw = keys.last!.stringValue
+            let parts = raw.split(separator: "_")
+            guard let first = parts.first else {
+                return L4NECodingKey(stringValue: raw)!
+            }
+            let transformed = parts.dropFirst().map { part -> String in
+                let s = String(part)
+                if s == "100m" { return "100m" }
+                if s == "1rm" { return "1Rm" }
+                return s.prefix(1).uppercased() + s.dropFirst()
+            }.joined()
+            return L4NECodingKey(stringValue: String(first) + transformed)!
+        }
         self.decoder = dec
     }
 
@@ -124,6 +152,24 @@ public final class L4NECoreClient: @unchecked Sendable {
             let payload: LiveTimerTickInput
         }
         return try execute(Request(payload: input))
+    }
+
+    /// Evaluates the Segmented PCr Race Prediction & Recalculator model (`ΤΗΕ ΘΕΩΡΙ.txt` v2.0).
+    public func calculatePcrPrediction(_ input: PcrRecalculatorInput) throws -> PcrPredictionResult {
+        struct Request: Encodable {
+            let action = "calculate_pcr_prediction"
+            let payload: PcrRecalculatorInput
+        }
+        return try execute(Request(payload: input))
+    }
+
+    /// Computes automatic Segmented PCr Race Predictions (`200m`, `400m`, `800m`) for a Template.
+    public func getTemplatePcrPredictions(templateId: String) throws -> [PcrPredictionResult] {
+        struct Request: Encodable {
+            let action = "template_pcr_predictions"
+            let templateId: String
+        }
+        return try execute(Request(templateId: templateId))
     }
 
     /// Lists Templates with their active `TemplateVersion` and blocks.
@@ -182,6 +228,20 @@ public final class L4NECoreClient: @unchecked Sendable {
             let nowMs: Int64?
         }
         return try execute(Request(templateId: templateId, isArchived: isArchived, nowMs: nowMs))
+    }
+
+    /// Permanently deletes a Template, its protocol versions, and its sessions.
+    @discardableResult
+    public func deleteTemplate(templateId: String) throws -> Bool {
+        struct Request: Encodable {
+            let action = "delete_template"
+            let templateId: String
+        }
+        struct Response: Decodable {
+            let deleted: Bool
+        }
+        let res: Response = try execute(Request(templateId: templateId))
+        return res.deleted
     }
 
     /// Expands a `TemplateVersion` into its deterministic sequence of `ExpectedRepSlot`s.

@@ -504,6 +504,75 @@ pub struct TemplateAnalyticsReport {
     pub latest_vs_previous: Option<SessionComparison>,
     pub latest_vs_personal_best: Option<SessionComparison>,
     pub health_correlations: Vec<SessionHealthCorrelationNote>,
+    /// Segmented PCr Race Predictions (200m / 400m / 800m) derived from the template & its sessions.
+    #[serde(default)]
+    pub pcr_predictions: Vec<PcrPredictionResult>,
+}
+
+/// Input segment for the Segmented PCr Race Prediction & Recalculator model (`ΤΗΕ ΘΕΩΡΙ.txt` v2.0).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PcrSegmentInput {
+    pub distance_m: i32,
+    pub duration_ms: i64,
+    /// Rest duration in milliseconds taken *before* swimming this segment (`0` for Segment 1).
+    pub rest_before_ms: i64,
+}
+
+/// Input payload for running the Segmented PCr Recalculator (`calculate_pcr_prediction`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PcrRecalculatorInput {
+    pub target_distance_m: i32,
+    #[serde(default)]
+    pub label: Option<String>,
+    /// PCr time constant `τ` in seconds (defaults to `28.0`).
+    #[serde(default)]
+    pub tau_seconds: Option<f64>,
+    /// Speed/distance coefficient `k` (defaults to `0.16` for 200m, `0.13` for 400m).
+    #[serde(default)]
+    pub custom_k: Option<f64>,
+    /// Optional Fatigue Factor `FF` override (`0.00` for rest < 20s, `0.015` for rest >= 20s after lactic load).
+    #[serde(default)]
+    pub custom_ff: Option<f64>,
+    /// Optional explicit tail duration (in ms) when `swum_distance_m < target_distance_m` (e.g. 22.5s for remaining 50m in Case Study A).
+    #[serde(default)]
+    pub tail_override_ms: Option<i64>,
+    pub segments: Vec<PcrSegmentInput>,
+}
+
+/// Per-segment breakdown produced by the Segmented PCr model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PcrSegmentBreakdown {
+    pub segment_index: i32,
+    pub distance_m: i32,
+    pub raw_duration_ms: i64,
+    pub rest_before_sec: f64,
+    pub recovery_factor: f64,
+    pub penalty_delta_pct: f64,
+    pub adjusted_duration_ms: i64,
+    pub note: String,
+}
+
+/// Deterministic output of the Segmented PCr Race Predictor & Recalculator.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PcrPredictionResult {
+    pub target_distance_m: i32,
+    pub label: String,
+    /// `"segmented_pcr"` (initial segment > 150m -> 0% penalty on Segment 1) or `"symmetric_broken"` (all segments <= 150m).
+    pub model_mode: String,
+    pub tau_seconds: f64,
+    pub k_coefficient: f64,
+    pub fatigue_factor: f64,
+    pub swum_distance_m: i32,
+    pub raw_broken_time_ms: i64,
+    pub average_rest_sec: f64,
+    pub recovery_factor: f64,
+    pub penalty_delta_pct: f64,
+    pub extrapolated_tail_distance_m: i32,
+    pub extrapolated_tail_ms: i64,
+    pub predicted_race_time_ms: i64,
+    pub formatted_predicted_time: String,
+    pub predicted_pace_ms_per_100m: i64,
+    pub segments: Vec<PcrSegmentBreakdown>,
 }
 
 /// Workout imported from Apple HealthKit / Health Connect or logged manually.

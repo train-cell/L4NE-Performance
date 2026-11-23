@@ -49,7 +49,19 @@ struct L4NETestRunner {
         assertEqual(diag.sessionsCount, 4)
         print("  ✓ Gate 1: Engine v1.3.0, Schema v4 diagnostics & 5 seeded protocols (Examples A/B/C, Pyramid, Compound) passed.")
 
-        // Gate 2: Athletic Centisecond Numpad FFI Parser
+        // Gate 2: Athletic Centisecond Numpad FFI Parser (Left-to-Right: Seconds -> Centiseconds)
+        let pOne = try client.parseAthleticNumpad(digits: "3")
+        assertEqual(pOne.durationMs, 3_000)
+        assertEqual(pOne.formattedDisplay, "3.00")
+
+        let pTwo = try client.parseAthleticNumpad(digits: "32")
+        assertEqual(pTwo.durationMs, 32_000)
+        assertEqual(pTwo.formattedDisplay, "32.00")
+
+        let pThree = try client.parseAthleticNumpad(digits: "324")
+        assertEqual(pThree.durationMs, 32_400)
+        assertEqual(pThree.formattedDisplay, "32.40")
+
         let p1 = try client.parseAthleticNumpad(digits: "3240")
         assertEqual(p1.durationMs, 32_400)
         assertEqual(p1.formattedDisplay, "32.40")
@@ -58,7 +70,7 @@ struct L4NETestRunner {
         let p2 = try client.parseAthleticNumpad(digits: "10855")
         assertEqual(p2.durationMs, 68_550)
         assertEqual(p2.formattedDisplay, "1:08.55")
-        print("  ✓ Gate 2: Athletic Centisecond Numpad parser ('3240' -> 32.40s, '10855' -> 1:08.55) passed.")
+        print("  ✓ Gate 2: Left-to-Right Athletic Centisecond Numpad parser ('3' -> 3.00s, '32' -> 32.00s, '324' -> 32.40s, '3240' -> 32.40s) passed.")
 
         // Gate 3: v1.1 Live Poolside Companion Timer Deterministic Clock Engine
         let swimTick = try client.computeLiveTimerTick(
@@ -301,7 +313,71 @@ struct L4NETestRunner {
 
         let standaloneWorkout = try client.setWorkoutStandalone(workoutId: workouts[0].id, keptAsStandalone: true)
         assertEqual(standaloneWorkout.keptAsStandalone, true)
-        print("  ✓ Gate 8: v1.3.0 Multi-Theme Engine (5 Bevel/Strava themes), Examples B/C hash separation & Health Context Baselines passed.")
-        print("✅ ALL 8 v1.3.0 FULL-STACK VERIFICATION GATES PASSED (100%).")
+
+        // Verify Sport-Specific Equipment Catalog & Template Deletion (even with logged sessions)
+        let finswimEqIds = Set(SportCategory.finswimming.availableEquipment.map(\.id))
+        assertTrue(finswimEqIds.contains("oxygen_tank"), "Finswimming equipment must include oxygen_tank (Φιάλη Οξυγόνου)")
+        assertTrue(finswimEqIds.contains("mask"), "Finswimming equipment must include mask (Μάσκα)")
+        assertTrue(finswimEqIds.contains("snorkel"), "Finswimming equipment must include snorkel (Αναπνευστήρας)")
+        assertTrue(finswimEqIds.contains("monofin"), "Finswimming equipment must include monofin (Μονοπέδιλο)")
+
+        let beforeDeleteCount = try client.listTemplates(includeArchived: true).count
+        let wasDeleted = try client.deleteTemplate(templateId: compoundTpl.id)
+        assertTrue(wasDeleted, "deleteTemplate must delete template and its sessions")
+        let afterDeleteCount = try client.listTemplates(includeArchived: true).count
+        assertEqual(afterDeleteCount, beforeDeleteCount - 1, "Template count must decrease by 1 after deletion")
+
+        print("  ✓ Gate 8: v1.3.0 Multi-Theme Engine, Sport Equipment Catalog, Template Deletion & Health Context Baselines passed.")
+
+        // Gate 9: Segmented PCr Race Prediction & Recalculator Model (ΤΗΕ ΘΕΩΡΙ.txt v2.0 Case Studies A & B + Automatic Template Predictions)
+        let pcrCaseA = try client.calculatePcrPrediction(
+            PcrRecalculatorInput(
+                targetDistanceM: 400,
+                label: "Case Study A — 400m Segmented",
+                tauSeconds: 28.0,
+                customK: 0.13,
+                customFf: 0.015,
+                segments: [
+                    PcrSegmentInput(distanceM: 200, durationMs: 82_000, restBeforeMs: 0),
+                    PcrSegmentInput(distanceM: 150, durationMs: 63_900, restBeforeMs: 20_000)
+                ]
+            )
+        )
+        assertEqual(pcrCaseA.modelMode, "segmented_pcr")
+        assertEqual(pcrCaseA.segments[0].penaltyDeltaPct, 0.0, "Segment 1 (>150m) must receive 0% penalty")
+        assertEqual(pcrCaseA.segments[1].penaltyDeltaPct, 8.13, "Segment 2 penalty must be 8.13%")
+        assertEqual(pcrCaseA.predictedRaceTimeMs, 173_590, "Predicted 400m time must equal 173.59s")
+        assertEqual(pcrCaseA.formattedPredictedTime, "2:53.59", "Formatted 400m prediction must equal 2:53.59")
+
+        let pcrCaseB = try client.calculatePcrPrediction(
+            PcrRecalculatorInput(
+                targetDistanceM: 200,
+                label: "Case Study B — 4x50m Symmetric",
+                tauSeconds: 28.0,
+                customK: 0.16,
+                customFf: 0.0,
+                segments: [
+                    PcrSegmentInput(distanceM: 50, durationMs: 17_000, restBeforeMs: 0),
+                    PcrSegmentInput(distanceM: 50, durationMs: 18_000, restBeforeMs: 15_000),
+                    PcrSegmentInput(distanceM: 50, durationMs: 18_700, restBeforeMs: 15_000),
+                    PcrSegmentInput(distanceM: 50, durationMs: 18_500, restBeforeMs: 15_000)
+                ]
+            )
+        )
+        assertEqual(pcrCaseB.modelMode, "symmetric_broken")
+        assertEqual(pcrCaseB.penaltyDeltaPct, 6.64, "4x50m @ 15s stop penalty must be 6.64%")
+        assertEqual(pcrCaseB.predictedRaceTimeMs, 76_990, "Predicted 200m time must equal 76.99s")
+
+        if let monofin8x50 = templates.first(where: { $0.name.contains("8×50m") }) {
+            let tplPreds = try client.getTemplatePcrPredictions(templateId: monofin8x50.id)
+            assertEqual(tplPreds.count, 2, "8x50m template must automatically produce both 200m (4x50m) and 400m (8x50m) PCr predictions")
+            assertEqual(tplPreds[0].targetDistanceM, 200)
+            assertEqual(tplPreds[1].targetDistanceM, 400)
+        }
+        assertEqual(L4NEVisualMode.allCases.count, 2, "Must support both Minimal and Maximized visual modes")
+        assertEqual(L4NEVisualMode.maximized.badgeTitle, "🎬 MAXIMIZED")
+        assertEqual(L4NEVisualMode.minimal.badgeTitle, "◐ MINIMAL")
+        print("  ✓ Gate 9: Segmented PCr Race Prediction & Recalculator (Case Study A -> 2:53.59, Case Study B -> 76.99s, 8x50m -> 200m & 400m) + Minimal/Maximized Motion Engine passed.")
+        print("✅ ALL 9 v1.3.0 FULL-STACK VERIFICATION GATES PASSED (100%).")
     }
 }

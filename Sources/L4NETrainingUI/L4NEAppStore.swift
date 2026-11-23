@@ -13,7 +13,35 @@ public final class L4NEAppStore: ObservableObject {
 
     @Published public var appSettings: AppSettings = AppSettings()
     @Published public var activePalette: L4NEPalette = .forPreset(.graphiteBevel)
+    @Published public var visualMode: L4NEVisualMode = .maximized
+    @Published public var soundEnabled: Bool = true
     @Published public var templates: [TemplateWithVersion] = []
+
+    public var isMaximized: Bool {
+        visualMode == .maximized
+    }
+
+    public func toggleVisualMode() {
+        visualMode = (visualMode == .maximized) ? .minimal : .maximized
+        L4NESoundHapticsEngine.shared.trigger(.waveSweep)
+        lastStatusBanner = visualMode == .maximized
+            ? "Ενεργοποιήθηκε το Maximized Mode (Σταγόνες · Κύματα · Σημαιάκια · Βατήρας · Ήχοι)."
+            : "Ενεργοποιήθηκε το Minimal Round Graphite Mode."
+    }
+
+    public func setVisualMode(_ mode: L4NEVisualMode) {
+        guard visualMode != mode else { return }
+        visualMode = mode
+        L4NESoundHapticsEngine.shared.trigger(.waveSweep)
+    }
+
+    public func toggleSound() {
+        soundEnabled.toggle()
+        L4NESoundHapticsEngine.shared.soundEnabled = soundEnabled
+        if soundEnabled {
+            L4NESoundHapticsEngine.shared.trigger(.dropletTap)
+        }
+    }
     @Published public var includeArchivedTemplates: Bool = false
     @Published public var selectedSportFilter: SportCategory? = nil
     @Published public var recentSessions: [SessionWithReps] = []
@@ -86,6 +114,7 @@ public final class L4NEAppStore: ObservableObject {
             let pal = L4NEPalette.forPreset(saved.activeTheme)
             L4NETheme.activePalette = pal
             activePalette = pal
+            L4NESoundHapticsEngine.shared.trigger(.waveSweep)
             lastStatusBanner = "Ενεργοποιήθηκε το theme '\(preset.displayTitle)'."
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -95,6 +124,7 @@ public final class L4NEAppStore: ObservableObject {
     public func createTemplate(_ input: CreateTemplateInput) {
         do {
             let created = try client.createTemplate(input)
+            L4NESoundHapticsEngine.shared.trigger(.victoryFanfare)
             lastStatusBanner = "Δημιουργήθηκε το template '\(created.name)' (v\(created.activeVersion.versionNumber))."
             refreshAll()
         } catch {
@@ -105,6 +135,7 @@ public final class L4NEAppStore: ObservableObject {
     public func updateTemplateProtocol(_ input: UpdateTemplateProtocolInput) {
         do {
             let updated = try client.updateTemplateProtocol(input)
+            L4NESoundHapticsEngine.shared.trigger(.victoryFanfare)
             lastStatusBanner = "Ενημερώθηκε το '\(updated.name)' → ενεργή έκδοση v\(updated.activeVersion.versionNumber)."
             refreshAll()
         } catch {
@@ -118,6 +149,7 @@ public final class L4NEAppStore: ObservableObject {
                 templateId: template.id,
                 isArchived: !template.isArchived
             )
+            L4NESoundHapticsEngine.shared.trigger(.dropletTap)
             lastStatusBanner = updated.isArchived
                 ? "Αρχειοθετήθηκε το '\(updated.name)'."
                 : "Επαναφέρθηκε το '\(updated.name)'."
@@ -127,9 +159,21 @@ public final class L4NEAppStore: ObservableObject {
         }
     }
 
+    public func deleteTemplate(templateId: String) {
+        do {
+            _ = try client.deleteTemplate(templateId: templateId)
+            L4NESoundHapticsEngine.shared.trigger(.deleteThud)
+            lastStatusBanner = "Το template διαγράφηκε."
+            refreshAll()
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
     public func logSession(_ input: LogSessionInput) {
         do {
             let logged = try client.logSession(input)
+            L4NESoundHapticsEngine.shared.trigger(.victoryFanfare)
             lastStatusBanner = "Καταγράφηκε session για '\(logged.templateName)' (\(logged.reps.count) reps)."
             refreshAll()
         } catch {
@@ -140,6 +184,7 @@ public final class L4NEAppStore: ObservableObject {
     public func deleteSession(sessionId: String) {
         do {
             _ = try client.deleteSession(sessionId: sessionId)
+            L4NESoundHapticsEngine.shared.trigger(.deleteThud)
             lastStatusBanner = "Το session διαγράφηκε."
             refreshAll()
         } catch {

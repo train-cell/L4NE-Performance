@@ -57,6 +57,7 @@ public struct DashboardView: View {
     @ObservedObject var store: L4NEAppStore
     @State private var selectedTemplateForNumpad: TemplateWithVersion?
     @State private var selectedTemplateForLiveTimer: TemplateWithVersion?
+    @State private var selectedTemplateForPcr: TemplateWithVersion?
 
     public init(store: L4NEAppStore) {
         self.store = store
@@ -73,13 +74,42 @@ public struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    // Brand Header + Quick Multi-Theme Cycle Pill
-                    HStack {
+                    // Brand Header + Minimal/Maximized Switcher + Sound Toggle + Theme Menu
+                    HStack(spacing: 8) {
                         L4NEBrandWordmark(
-                            subtitle: "BEVEL GRAPHITE · STRAVA ANALYTICS",
-                            palette: store.activePalette
+                            subtitle: "PERFORMANCE",
+                            palette: store.activePalette,
+                            isMaximized: store.isMaximized
                         )
                         Spacer()
+
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                store.toggleVisualMode()
+                            }
+                        } label: {
+                            Text(store.visualMode.badgeTitle)
+                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 6)
+                                .background(store.isMaximized ? store.activePalette.primaryAccent : store.activePalette.surface2)
+                                .foregroundStyle(store.isMaximized ? store.activePalette.textOnAccent : store.activePalette.textSecondary)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            store.toggleSound()
+                        } label: {
+                            Image(systemName: store.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .padding(6)
+                                .background(store.activePalette.surface2)
+                                .foregroundStyle(store.soundEnabled ? store.activePalette.primaryAccent : store.activePalette.textSecondary)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+
                         Menu {
                             ForEach(ThemePreset.allCases) { preset in
                                 Button {
@@ -100,7 +130,7 @@ public struct DashboardView: View {
                                     .lineLimit(1)
                             }
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .padding(.horizontal, 10)
+                            .padding(.horizontal, 9)
                             .padding(.vertical, 6)
                             .background(store.activePalette.surface2)
                             .foregroundStyle(store.activePalette.primaryAccent)
@@ -159,18 +189,26 @@ public struct DashboardView: View {
                         }
                     }
 
-                    // Quick Launch: Post-Workout Numpad OR Live Poolside Companion
+                    // Quick Launch: Post-Workout Numpad, Live Timer & Segmented PCr Model
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("PROTOCOLS & TEMPLATES (\(store.filteredTemplates.count))")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundStyle(store.activePalette.textSecondary)
-                            .tracking(1.2)
+                        L4NEAnimatedSectionHeader(
+                            title: "ΠΡΩΤΟΚΟΛΛΑ & TEMPLATES (\(store.filteredTemplates.count))",
+                            leftIcon: "drop.fill",
+                            rightIcon: "flag.checkered.2.crossed",
+                            palette: store.activePalette,
+                            isMaximized: store.isMaximized
+                        )
 
-                        ForEach(store.filteredTemplates) { tpl in
+                        ForEach(Array(store.filteredTemplates.enumerated()), id: \.element.id) { idx, tpl in
                             VStack(alignment: .leading, spacing: 10) {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 4) {
                                         HStack(spacing: 6) {
+                                            if store.isMaximized {
+                                                Image(systemName: "water.waves")
+                                                    .font(.system(size: 12, weight: .bold))
+                                                    .foregroundStyle(store.activePalette.secondaryAccent)
+                                            }
                                             Text(tpl.name)
                                                 .font(.system(size: 15, weight: .bold))
                                                 .foregroundStyle(store.activePalette.textPrimary)
@@ -187,45 +225,132 @@ public struct DashboardView: View {
                                         Text("\(tpl.sportCategory.displayTitle) · \(tpl.activeVersion.totalReps) reps · \(tpl.activeVersion.totalDistanceM.map { "\($0)m · " } ?? "")\(tpl.activeVersion.isHomogeneous ? "Homogeneous" : "Pyramid / Compound")")
                                             .font(.system(size: 12))
                                             .foregroundStyle(store.activePalette.textSecondary)
+
+                                        if !tpl.activeVersion.equipment.isEmpty {
+                                            ScrollView(.horizontal, showsIndicators: false) {
+                                                HStack(spacing: 5) {
+                                                    ForEach(tpl.activeVersion.equipment, id: \.self) { eq in
+                                                        Text(SportCategory.equipmentDisplayTitle(for: eq))
+                                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                            .padding(.horizontal, 6)
+                                                            .padding(.vertical, 2)
+                                                            .background(store.activePalette.surface2)
+                                                            .foregroundStyle(store.activePalette.textSecondary)
+                                                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        let pcrPreds = (try? store.client.getTemplatePcrPredictions(templateId: tpl.id)) ?? []
+                                        if !pcrPreds.isEmpty {
+                                            ScrollView(.horizontal, showsIndicators: false) {
+                                                HStack(spacing: 6) {
+                                                    ForEach(pcrPreds) { pred in
+                                                        HStack(spacing: 4) {
+                                                            Image(systemName: "scope")
+                                                            Text("PCr \(pred.targetDistanceM)m: \(pred.formattedPredictedTime)")
+                                                        }
+                                                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                                                        .padding(.horizontal, 8)
+                                                        .padding(.vertical, 3)
+                                                        .background(store.activePalette.primaryAccent.opacity(0.14))
+                                                        .foregroundStyle(store.activePalette.primaryAccent)
+                                                        .clipShape(Capsule())
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                     Spacer()
+                                    Button(role: .destructive) {
+                                        store.deleteTemplate(templateId: tpl.id)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 13, weight: .bold))
+                                            .foregroundStyle(store.activePalette.regressionRed)
+                                            .padding(6)
+                                            .background(store.activePalette.surface2)
+                                            .clipShape(Circle())
+                                    }
+                                    .buttonStyle(.plain)
                                 }
 
-                                HStack(spacing: 10) {
+                                HStack(spacing: 8) {
                                     Button {
                                         selectedTemplateForNumpad = tpl
                                     } label: {
-                                        Label("FAST NUMPAD LOG", systemImage: "number.square.fill")
-                                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                                        Label("NUMPAD", systemImage: "number.square.fill")
+                                            .font(.system(size: 10, weight: .black, design: .monospaced))
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 10)
                                             .foregroundStyle(store.activePalette.textOnAccent)
                                     }
-                                    .buttonStyle(L4NETactileBevelButtonStyle(surfaceColor: store.activePalette.primaryAccent, cornerRadius: 10))
+                                    .buttonStyle(
+                                        L4NEDuolingo3DButtonStyle(
+                                            surfaceColor: store.activePalette.primaryAccent,
+                                            cornerRadius: 10,
+                                            isMaximized: store.isMaximized,
+                                            soundCue: .dropletTap
+                                        )
+                                    )
 
                                     Button {
                                         selectedTemplateForLiveTimer = tpl
                                     } label: {
-                                        Label("LIVE TIMER", systemImage: "stopwatch.fill")
-                                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                                        Label("LIVE", systemImage: "stopwatch.fill")
+                                            .font(.system(size: 10, weight: .black, design: .monospaced))
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 10)
                                             .foregroundStyle(store.activePalette.primaryAccent)
                                     }
-                                    .buttonStyle(L4NETactileBevelButtonStyle(surfaceColor: store.activePalette.surface2, cornerRadius: 10))
+                                    .buttonStyle(
+                                        L4NEDuolingo3DButtonStyle(
+                                            surfaceColor: store.activePalette.surface2,
+                                            cornerRadius: 10,
+                                            isMaximized: store.isMaximized,
+                                            soundCue: .blockDive
+                                        )
+                                    )
+
+                                    Button {
+                                        selectedTemplateForPcr = tpl
+                                    } label: {
+                                        Label("PCr MODEL", systemImage: "function")
+                                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 10)
+                                            .foregroundStyle(store.activePalette.prGold)
+                                    }
+                                    .buttonStyle(
+                                        L4NEDuolingo3DButtonStyle(
+                                            surfaceColor: store.activePalette.surface2,
+                                            cornerRadius: 10,
+                                            isMaximized: store.isMaximized,
+                                            soundCue: .victoryFanfare
+                                        )
+                                    )
                                 }
                             }
                             .padding(14)
-                            .l4neBevelCard(cornerRadius: 16, palette: store.activePalette)
+                            .l4neAnimatedBox(
+                                palette: store.activePalette,
+                                isMaximized: store.isMaximized,
+                                phaseSeed: Double(idx) * 0.85,
+                                cornerRadius: 16
+                            )
                         }
                     }
 
-                    // Strava-Style Activity Feed Cards with Split Pace Bar Charts
+                    // Recent Sessions & Split Analysis
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("STRAVA-STYLE ACTIVITY FEED & SPLIT ANALYSIS")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundStyle(store.activePalette.textSecondary)
-                            .tracking(1.2)
+                        L4NEAnimatedSectionHeader(
+                            title: "ΠΡΟΣΦΑΤΕΣ ΠΡΟΠΟΝΗΣΕΙΣ & SPLITS",
+                            leftIcon: "trophy.fill",
+                            rightIcon: "water.waves",
+                            palette: store.activePalette,
+                            isMaximized: store.isMaximized
+                        )
 
                         ForEach(store.recentSessions) { session in
                             NavigationLink {
@@ -239,12 +364,20 @@ public struct DashboardView: View {
                 }
                 .padding(16)
             }
-            .background(store.activePalette.bgCanvas.ignoresSafeArea())
+            .background(
+                L4NECinematicAmbientBackground(
+                    palette: store.activePalette,
+                    isMaximized: store.isMaximized
+                )
+            )
             .sheet(item: $selectedTemplateForNumpad) { template in
                 SessionLoggingView(store: store, template: template)
             }
             .sheet(item: $selectedTemplateForLiveTimer) { template in
                 LivePoolsideTimerView(store: store, template: template)
+            }
+            .sheet(item: $selectedTemplateForPcr) { template in
+                PcrRecalculatorSheet(store: store, initialTemplate: template)
             }
         }
     }
@@ -421,6 +554,7 @@ public struct TemplatesLibraryView: View {
     @State private var searchText: String = ""
     @State private var showCreateSheet = false
     @State private var templateToEdit: TemplateWithVersion?
+    @State private var templateForPcr: TemplateWithVersion?
 
     public init(store: L4NEAppStore) {
         self.store = store
@@ -472,15 +606,17 @@ public struct TemplatesLibraryView: View {
                                         .foregroundStyle(L4NETheme.textSecondary)
 
                                     if !tpl.activeVersion.equipment.isEmpty {
-                                        HStack(spacing: 6) {
-                                            ForEach(tpl.activeVersion.equipment, id: \.self) { eq in
-                                                Text(eq.uppercased())
-                                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 2)
-                                                    .background(L4NETheme.background)
-                                                    .foregroundStyle(L4NETheme.textSecondary)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                        ScrollView(.horizontal, showsIndicators: false) {
+                                            HStack(spacing: 6) {
+                                                ForEach(tpl.activeVersion.equipment, id: \.self) { eq in
+                                                    Text(SportCategory.equipmentDisplayTitle(for: eq))
+                                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                        .padding(.horizontal, 6)
+                                                        .padding(.vertical, 2)
+                                                        .background(L4NETheme.background)
+                                                        .foregroundStyle(L4NETheme.textSecondary)
+                                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                                }
                                             }
                                         }
                                     }
@@ -492,22 +628,40 @@ public struct TemplatesLibraryView: View {
                                 Button {
                                     templateToEdit = tpl
                                 } label: {
-                                    Label("Edit / Versions (v\(tpl.activeVersion.versionNumber))", systemImage: "slider.horizontal.3")
+                                    Label("Επεξεργασία (v\(tpl.activeVersion.versionNumber))", systemImage: "slider.horizontal.3")
                                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                                         .foregroundStyle(L4NETheme.electricLime)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.borderless)
+
+                                Button {
+                                    templateForPcr = tpl
+                                } label: {
+                                    Label("PCr Model", systemImage: "function")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.prGold)
+                                }
+                                .buttonStyle(.borderless)
 
                                 Spacer()
 
                                 Button {
                                     store.toggleTemplateArchived(tpl)
                                 } label: {
-                                    Label(tpl.isArchived ? "Unarchive" : "Archive", systemImage: "archivebox")
+                                    Label(tpl.isArchived ? "Επαναφορά" : "Αρχείο", systemImage: "archivebox")
                                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                                         .foregroundStyle(L4NETheme.textSecondary)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.borderless)
+
+                                Button(role: .destructive) {
+                                    store.deleteTemplate(templateId: tpl.id)
+                                } label: {
+                                    Label("Διαγραφή", systemImage: "trash")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.regressionRed)
+                                }
+                                .buttonStyle(.borderless)
                             }
                         }
                         .padding(14)
@@ -539,6 +693,9 @@ public struct TemplatesLibraryView: View {
             .sheet(item: $templateToEdit) { tpl in
                 TemplateBuilderSheet(store: store, existingTemplate: tpl)
             }
+            .sheet(item: $templateForPcr) { tpl in
+                PcrRecalculatorSheet(store: store, initialTemplate: tpl)
+            }
         }
     }
 }
@@ -554,7 +711,7 @@ public struct TemplateBuilderSheet: View {
     @State private var poolLengthM: Int = 50
     @State private var rounds: Int = 1
     @State private var roundRestSeconds: Int = 0
-    @State private var selectedEquipment: Set<String> = ["monofin", "snorkel"]
+    @State private var selectedEquipment: Set<String> = ["monofin", "snorkel", "mask"]
     @State private var notes: String = ""
     @State private var blocks: [TemplateBlockInput] = [
         TemplateBlockInput(
@@ -567,10 +724,6 @@ public struct TemplateBuilderSheet: View {
     ]
     @State private var versionHistory: [TemplateVersion] = []
 
-    private let availableEquipment = [
-        "monofin", "bifins", "snorkel", "paddles", "pullbuoy", "kickboard", "parachute", "barbell", "spikes"
-    ]
-
     public init(store: L4NEAppStore, existingTemplate: TemplateWithVersion? = nil) {
         self.store = store
         self.existingTemplate = existingTemplate
@@ -580,15 +733,16 @@ public struct TemplateBuilderSheet: View {
         NavigationStack {
             Form {
                 if existingTemplate == nil {
-                    Section("1-Tap Multi-Sport Presets") {
+                    Section("Έτοιμα Πρωτόκολλα (1-Tap Presets)") {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
-                                Button("8×50m Monofin") { applyPreset(.monofin8x50) }
-                                Button("Bifins Pyramid") { applyPreset(.bifinsPyramid) }
-                                Button("4×[2×50+100] Send-Off") { applyPreset(.compoundSendOff) }
-                                Button("Track 6×200m") { applyPreset(.track6x200) }
-                                Button("Field Long Jump") { applyPreset(.fieldLongJump) }
-                                Button("Gym 5×5 Squat") { applyPreset(.gymSquat5x5) }
+                                Button("8×50m Επιφάνεια (Μονοπέδιλο)") { applyPreset(.monofin8x50) }
+                                Button("4×50m Υποβρύχιο (Φιάλη Οξυγόνου)") { applyPreset(.immersion4x50) }
+                                Button("Πυραμίδα Διπλά Πέδιλα") { applyPreset(.bifinsPyramid) }
+                                Button("Κολύμβηση 4×[2×50+100]") { applyPreset(.compoundSendOff) }
+                                Button("Στίβος 6×200m Spikes") { applyPreset(.track6x200) }
+                                Button("Κονίστρα Άλμα εις Μήκος") { applyPreset(.fieldLongJump) }
+                                Button("Γυμναστήριο 5×5 Squat") { applyPreset(.gymSquat5x5) }
                             }
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                         }
@@ -604,6 +758,14 @@ public struct TemplateBuilderSheet: View {
                                 Text(cat.displayTitle).tag(cat)
                             }
                         }
+                        .onChange(of: sport) { _, newSport in
+                            selectedEquipment = newSport.defaultEquipmentIds
+                            for i in blocks.indices {
+                                blocks[i].recordKind = newSport.defaultRecordKind
+                                blocks[i].distanceM = newSport.defaultRecordKind == .timedDistance ? (newSport == .track ? 200 : 50) : nil
+                                blocks[i].strokeOrMovement = newSport.availableMovements.first ?? "surface"
+                            }
+                        }
                     }
                     if sport == .swimming || sport == .finswimming {
                         Picker("Μήκος Πισίνας", selection: $poolLengthM) {
@@ -616,26 +778,29 @@ public struct TemplateBuilderSheet: View {
                     TextField("Σημειώσεις Πρωτοκόλλου", text: $notes)
                 }
 
-                Section("Εξοπλισμός (Equipment)") {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 95))], spacing: 8) {
-                        ForEach(availableEquipment, id: \.self) { item in
-                            let isSelected = selectedEquipment.contains(item)
+                Section("Εξοπλισμός — \(sport.displayTitle)") {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 8) {
+                        ForEach(sport.availableEquipment) { item in
+                            let isSelected = selectedEquipment.contains(item.id)
                             Button {
                                 if isSelected {
-                                    selectedEquipment.remove(item)
+                                    selectedEquipment.remove(item.id)
                                 } else {
-                                    selectedEquipment.insert(item)
+                                    selectedEquipment.insert(item.id)
                                 }
                             } label: {
-                                Text(item.uppercased())
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                Text(item.title)
+                                    .font(.system(size: 11, weight: .bold))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 6)
+                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 6)
                                     .background(isSelected ? L4NETheme.electricLime : L4NETheme.mutedSurface)
                                     .foregroundStyle(isSelected ? Color.black : L4NETheme.textPrimary)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.borderless)
                         }
                     }
                 }
@@ -652,8 +817,11 @@ public struct TemplateBuilderSheet: View {
                                     Button(role: .destructive) {
                                         blocks.remove(at: idx)
                                     } label: {
-                                        Image(systemName: "trash")
+                                        Label("Διαγραφή Block", systemImage: "trash")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundStyle(L4NETheme.regressionRed)
                                     }
+                                    .buttonStyle(.borderless)
                                 }
                             }
 
@@ -711,7 +879,7 @@ public struct TemplateBuilderSheet: View {
                 }
 
                 if !versionHistory.isEmpty {
-                    Section("Ιστορικό Εκδόσεων Πρωτοκόλλου (Immutable SHA-256)") {
+                    Section("Ιστορικό Εκδόσεων Πρωτοκόλλου") {
                         ForEach(versionHistory) { ver in
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
@@ -729,8 +897,25 @@ public struct TemplateBuilderSheet: View {
                         }
                     }
                 }
+
+                if let existing = existingTemplate {
+                    Section {
+                        Button(role: .destructive) {
+                            store.deleteTemplate(templateId: existing.id)
+                            dismiss()
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Label("Διαγραφή Πρωτοκόλλου (Delete Template)", systemImage: "trash.fill")
+                                    .font(.system(size: 13, weight: .bold))
+                                Spacer()
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
             }
-            .navigationTitle(existingTemplate == nil ? "Create Template" : "Edit Protocol")
+            .navigationTitle(existingTemplate == nil ? "Νέο Πρωτόκολλο" : "Επεξεργασία Πρωτοκόλλου")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -770,6 +955,7 @@ public struct TemplateBuilderSheet: View {
 
     private enum PresetKind {
         case monofin8x50
+        case immersion4x50
         case bifinsPyramid
         case compoundSendOff
         case track6x200
@@ -780,20 +966,29 @@ public struct TemplateBuilderSheet: View {
     private func applyPreset(_ preset: PresetKind) {
         switch preset {
         case .monofin8x50:
-            name = "8×50m Surface Monofin — 30s Rest"
+            name = "8×50m Επιφάνεια Μονοπέδιλο — 30s Rest"
             sport = .finswimming
             poolLengthM = 50
             rounds = 1
-            selectedEquipment = ["monofin", "snorkel"]
+            selectedEquipment = ["monofin", "snorkel", "mask"]
             blocks = [
                 TemplateBlockInput(repeatCount: 8, distanceM: 50, strokeOrMovement: "surface", restMode: .fixedRest, restOrSendoffMs: 30_000)
             ]
-        case .bifinsPyramid:
-            name = "50-100-150-100-50m Bifins Pyramid"
+        case .immersion4x50:
+            name = "4×50m Υποβρύχιο (Immersion) — 60s Rest"
             sport = .finswimming
             poolLengthM = 50
             rounds = 1
-            selectedEquipment = ["bifins", "snorkel"]
+            selectedEquipment = ["monofin", "mask", "oxygen_tank"]
+            blocks = [
+                TemplateBlockInput(repeatCount: 4, distanceM: 50, strokeOrMovement: "immersion", restMode: .fixedRest, restOrSendoffMs: 60_000)
+            ]
+        case .bifinsPyramid:
+            name = "50-100-150-100-50m Πυραμίδα Διπλά Πέδιλα"
+            sport = .finswimming
+            poolLengthM = 50
+            rounds = 1
+            selectedEquipment = ["bifins", "snorkel", "mask"]
             blocks = [50, 100, 150, 100, 50].map { d in
                 TemplateBlockInput(repeatCount: 1, distanceM: d, strokeOrMovement: "bifins", restMode: .fixedRest, restOrSendoffMs: 30_000)
             }
@@ -803,7 +998,7 @@ public struct TemplateBuilderSheet: View {
             poolLengthM = 50
             rounds = 4
             roundRestSeconds = 30
-            selectedEquipment = ["paddles"]
+            selectedEquipment = ["goggles", "paddles", "pullbuoy"]
             blocks = [
                 TemplateBlockInput(repeatCount: 2, distanceM: 50, strokeOrMovement: "freestyle", restMode: .sendOff, restOrSendoffMs: 50_000),
                 TemplateBlockInput(repeatCount: 1, distanceM: 100, strokeOrMovement: "freestyle", restMode: .sendOff, restOrSendoffMs: 100_000)
@@ -812,15 +1007,15 @@ public struct TemplateBuilderSheet: View {
             name = "6×200m Track Sprint — 90s Rest"
             sport = .track
             rounds = 1
-            selectedEquipment = ["spikes"]
+            selectedEquipment = ["spikes", "starting_blocks"]
             blocks = [
                 TemplateBlockInput(repeatCount: 6, distanceM: 200, strokeOrMovement: "sprint", restMode: .fixedRest, restOrSendoffMs: 90_000)
             ]
         case .fieldLongJump:
-            name = "6 Attempts Long Jump Final"
+            name = "6 Προσπάθειες Άλμα εις Μήκος"
             sport = .field
             rounds = 1
-            selectedEquipment = ["spikes"]
+            selectedEquipment = ["field_spikes", "takeoff_board"]
             blocks = [
                 TemplateBlockInput(repeatCount: 6, recordKind: .distanceAttempt, distanceM: nil, strokeOrMovement: "long_jump", restMode: .fixedRest, restOrSendoffMs: 120_000)
             ]
@@ -828,7 +1023,7 @@ public struct TemplateBuilderSheet: View {
             name = "5×5 Back Squat Strength"
             sport = .gym
             rounds = 1
-            selectedEquipment = ["barbell"]
+            selectedEquipment = ["barbell", "lifting_belt"]
             blocks = [
                 TemplateBlockInput(repeatCount: 5, recordKind: .weightReps, distanceM: nil, strokeOrMovement: "back_squat", restMode: .fixedRest, restOrSendoffMs: 180_000)
             ]
@@ -962,12 +1157,22 @@ public struct SessionLoggingView: View {
 
                         if activeSlot.recordKind == .timedDistance {
                             let raw = rawDigitsBySlot[currentSlotIndex] ?? ""
-                            let formatted = (try? store.client.parseAthleticNumpad(digits: raw).formattedDisplay) ?? "00.00"
+                            let formatted: String = {
+                                if raw.isEmpty { return "00.00" }
+                                if let parsed = try? store.client.parseAthleticNumpad(digits: raw) {
+                                    return parsed.formattedDisplay
+                                }
+                                return "00.00"
+                            }()
 
                             Text(formatted)
                                 .font(.system(size: 44, weight: .black, design: .monospaced))
                                 .monospacedDigit()
                                 .foregroundStyle(L4NETheme.electricLime)
+
+                            Text("Δευτερόλεπτα → Εκατοστά (από αριστερά προς τα δεξιά)")
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundStyle(L4NETheme.textSecondary)
 
                             HStack(spacing: 14) {
                                 if activeSlot.restMode == .sendOff, let dur = parsedMsBySlot[currentSlotIndex] {
@@ -1155,7 +1360,7 @@ public struct SessionLoggingView: View {
         if mins > 0 {
             rawDigitsBySlot[currentSlotIndex] = String(format: "%lld%02lld%02lld", mins, secs, cs)
         } else {
-            rawDigitsBySlot[currentSlotIndex] = String(format: "%lld%02lld", secs, cs)
+            rawDigitsBySlot[currentSlotIndex] = String(format: "%02lld%02lld", secs, cs)
         }
     }
 
@@ -1163,11 +1368,13 @@ public struct SessionLoggingView: View {
         var current = rawDigitsBySlot[currentSlotIndex] ?? ""
         switch key {
         case "⌫":
+            L4NESoundHapticsEngine.shared.trigger(.dropletTap)
             if !current.isEmpty {
                 current.removeLast()
                 applyDigits(current)
             }
         case "NEXT ⏎":
+            L4NESoundHapticsEngine.shared.trigger(.victoryFanfare)
             if let slot = activeSlot {
                 if slot.recordKind == .weightReps && weightKgBySlot[currentSlotIndex] == nil {
                     weightKgBySlot[currentSlotIndex] = 100.0
@@ -1182,6 +1389,7 @@ public struct SessionLoggingView: View {
                 saveLoggedSession()
             }
         default:
+            L4NESoundHapticsEngine.shared.trigger(.dropletTap)
             if current.count < 6 {
                 current.append(key)
                 applyDigits(current)
@@ -1259,6 +1467,7 @@ public struct TemplateAnalyticsView: View {
     @State private var selectedCurrentSessionId: String = ""
     @State private var selectedBaselineSessionId: String = ""
     @State private var customComparison: SessionComparison?
+    @State private var showPcrRecalculator: Bool = false
 
     public init(store: L4NEAppStore, templateId: String) {
         self.store = store
@@ -1305,6 +1514,64 @@ public struct TemplateAnalyticsView: View {
                         )
                     }
 
+                    // Segmented PCr Race Predictions Section (200m / 400m / 800m) + Interactive Recalculator
+                    let pcrList = report.pcrPredictions ?? []
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("ΠΡΟΒΛΕΨΗ ΑΓΩΝΑ · SEGMENTED PCr MODEL")
+                                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                                    .foregroundStyle(L4NETheme.electricLime)
+                                Text("Recovery = 1 - e^(-t/τ) · Δ = k·Recovery + FF (τ = 28s)")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(L4NETheme.textSecondary)
+                            }
+                            Spacer()
+                            Button {
+                                showPcrRecalculator = true
+                            } label: {
+                                Label("PCr Recalculator", systemImage: "function")
+                                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 7)
+                                    .background(L4NETheme.electricLime)
+                                    .foregroundStyle(Color.black)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        ForEach(pcrList) { pred in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(pred.label)
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(L4NETheme.textPrimary)
+                                        Text("Broken: \(L4NEDurationFormatter.formatMs(pred.rawBrokenTimeMs)) · Rest t=\(String(format: "%.0fs", pred.averageRestSec)) · k=\(String(format: "%.2f", pred.kCoefficient)) · Δ=+\(String(format: "%.2f%%", pred.penaltyDeltaPct))")
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundStyle(L4NETheme.textSecondary)
+                                    }
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(pred.formattedPredictedTime)
+                                            .font(.system(size: 22, weight: .black, design: .rounded))
+                                            .monospacedDigit()
+                                            .foregroundStyle(L4NETheme.prGold)
+                                        Text(L4NEDurationFormatter.formatPacePer100m(pred.predictedPaceMsPer100m))
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(L4NETheme.signalGreen)
+                                    }
+                                }
+                            }
+                            .padding(12)
+                            .background(L4NETheme.mutedSurface)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                    .padding(14)
+                    .l4neBevelCard(cornerRadius: 14)
+
                     // Native Swift Charts: Intra-Session Rep-by-Rep Pace & Fatigue Curve
                     #if canImport(Charts)
                     if let latestSession = sessions.first, !latestSession.reps.isEmpty {
@@ -1334,7 +1601,7 @@ public struct TemplateAnalyticsView: View {
                     // Custom Session-vs-Session Comparison Selector
                     if sessions.count >= 2 {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("DETERMINISTIC SESSION COMPARISON")
+                            Text("ΣΥΓΚΡΙΣΗ ΠΡΟΠΟΝΗΣΕΩΝ (SESSION COMPARISON)")
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundStyle(L4NETheme.textSecondary)
 
@@ -1399,9 +1666,9 @@ public struct TemplateAnalyticsView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
 
-                    // Historical Sessions Management (Export to Apple HealthKit v1.1 + Delete)
+                    // Historical Sessions Management
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("SESSION HISTORY & APPLE HEALTHKIT EXPORT (v1.1)")
+                        Text("ΙΣΤΟΡΙΚΟ ΕΚΤΕΛΕΣΕΩΝ & APPLE HEALTH")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .foregroundStyle(L4NETheme.textSecondary)
 
@@ -1445,10 +1712,10 @@ public struct TemplateAnalyticsView: View {
                         }
                     }
 
-                    // Observational Health Context Section (Correlation, never causation)
+                    // Health Context Section
                     if !report.healthCorrelations.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("HEALTH CONTEXT (OBSERVATIONAL CORRELATION)")
+                            Text("ΔΕΔΟΜΕΝΑ ΑΠΟΚΑΤΑΣΤΑΣΗΣ (HEALTH CONTEXT)")
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundStyle(L4NETheme.textSecondary)
 
@@ -1480,7 +1747,10 @@ public struct TemplateAnalyticsView: View {
             .padding(16)
         }
         .background(L4NETheme.background.ignoresSafeArea())
-        .navigationTitle("Deterministic Analytics")
+        .navigationTitle("L4NE Analytics")
+        .sheet(isPresented: $showPcrRecalculator) {
+            PcrRecalculatorSheet(store: store, initialTemplate: template)
+        }
         .onAppear {
             reloadAnalytics()
         }
@@ -1853,12 +2123,12 @@ public struct HealthContextView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    // Observational Principle Banner
+                    // Health Baselines Header
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("OBSERVATIONAL HEALTH CONTEXT · NO CAUSAL CLAIMS")
+                        Text("ΔΕΙΚΤΕΣ ΑΠΟΚΑΤΑΣΤΑΣΗΣ & ΠΡΟΣΩΠΙΚΟ BASELINE")
                             .font(.system(size: 10, weight: .black, design: .monospaced))
                             .foregroundStyle(store.activePalette.primaryAccent)
-                        Text("Το L4NE συγκρίνει την αθλητική επίδοση με το προσωπικό σου baseline σε Ύπνο, HRV, Resting HR και VO₂ Max παρουσιάζοντας παρατηρησιακές συσχετίσεις — ποτέ αναπόδεικτη αιτιότητα.")
+                        Text("Σύγκριση της αθλητικής επίδοσης με το προσωπικό σου baseline σε Ύπνο, HRV, Resting HR και VO₂ Max.")
                             .font(.system(size: 12))
                             .foregroundStyle(store.activePalette.textSecondary)
                     }
@@ -1958,23 +2228,73 @@ public struct SettingsDataView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
                         L4NEBrandWordmark(
-                            subtitle: "LOCAL-FIRST · ZERO AI · ZERO CLOUD",
-                            palette: store.activePalette
+                            subtitle: "PERFORMANCE",
+                            palette: store.activePalette,
+                            isMaximized: store.isMaximized
                         )
-                        Text("Database: \(store.client.databasePath)")
-                            .font(.system(size: 11, design: .monospaced))
+                        Text("L4NE Performance · Αθλητική Καταγραφή & Ανάλυση Επιδόσεων")
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(store.activePalette.textSecondary)
                             .padding(.top, 4)
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .l4neBevelCard(cornerRadius: 14, palette: store.activePalette)
+                    .l4neAnimatedBox(palette: store.activePalette, isMaximized: store.isMaximized, phaseSeed: 0.2, cornerRadius: 14)
 
-                    // Multi-Theme Studio Selector (Bevel Graphite · Strava Obsidian · Bevel Navy · Lane 4 Carbon · Daylight Lab)
+                    // Minimal vs Maximized Graphics & Audio Mode Selector
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("MULTI-THEME STUDIO (MINIMALIST GRAPHITE · BEVEL · STRAVA)")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundStyle(store.activePalette.textSecondary)
+                        L4NEAnimatedSectionHeader(
+                            title: "ΓΡΑΦΙΚΑ, ANIMATIONS & ΗΧΟΙ (MINIMAL vs MAXIMIZED)",
+                            leftIcon: "sparkles",
+                            rightIcon: "speaker.wave.2.fill",
+                            palette: store.activePalette,
+                            isMaximized: store.isMaximized
+                        )
+
+                        HStack(spacing: 10) {
+                            ForEach(L4NEVisualMode.allCases) { mode in
+                                let selected = store.visualMode == mode
+                                Button {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                        store.setVisualMode(mode)
+                                    }
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(mode.badgeTitle)
+                                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                                        Text(mode == .maximized ? "Σταγόνες, Κύματα, Σημαιάκια, Βατήρας & 3D Duolingo Physics" : "Καθαρό Μινιμαλιστικό Round Graphite UI")
+                                            .font(.system(size: 10))
+                                            .lineLimit(2)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(12)
+                                    .background(selected ? store.activePalette.primaryAccent : store.activePalette.surface1)
+                                    .foregroundStyle(selected ? store.activePalette.textOnAccent : store.activePalette.textPrimary)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        Toggle("Ηχητικά Εφέ & Απτική Ανάδραση (Sounds & Haptics)", isOn: Binding(
+                            get: { store.soundEnabled },
+                            set: { _ in store.toggleSound() }
+                        ))
+                        .font(.system(size: 12, weight: .bold))
+                        .padding(12)
+                        .background(store.activePalette.surface1)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    // Multi-Theme Selector
+                    VStack(alignment: .leading, spacing: 10) {
+                        L4NEAnimatedSectionHeader(
+                            title: "ΘΕΜΑΤΑ ΕΜΦΑΝΙΣΗΣ (THEMES)",
+                            leftIcon: "paintpalette.fill",
+                            rightIcon: "drop.fill",
+                            palette: store.activePalette,
+                            isMaximized: store.isMaximized
+                        )
 
                         ForEach(ThemePreset.allCases) { preset in
                             let previewPalette = L4NEPalette.forPreset(preset)
@@ -2113,5 +2433,441 @@ public struct SettingsDataView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - 9. Segmented PCr Race Predictor & Interactive Recalculator Sheet (ΤΗΕ ΘΕΩΡΙ.txt v2.0)
+
+public struct PcrRecalculatorSheet: View {
+    @ObservedObject var store: L4NEAppStore
+    public let initialTemplate: TemplateWithVersion?
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var targetDistanceM: Int = 200
+    @State private var tauSeconds: Double = 28.0
+    @State private var customK: Double = 0.16
+    @State private var fatigueMode: Int = 0 // 0 = Auto, 1 = 0.000 (<15s sprint), 2 = 0.015 (>=20s lactic)
+    @State private var segments: [PcrSegmentInput] = [
+        PcrSegmentInput(distanceM: 50, durationMs: 17_000, restBeforeMs: 0),
+        PcrSegmentInput(distanceM: 50, durationMs: 18_000, restBeforeMs: 15_000),
+        PcrSegmentInput(distanceM: 50, durationMs: 18_700, restBeforeMs: 15_000),
+        PcrSegmentInput(distanceM: 50, durationMs: 18_500, restBeforeMs: 15_000)
+    ]
+    @State private var prediction: PcrPredictionResult?
+
+    public init(store: L4NEAppStore, initialTemplate: TemplateWithVersion? = nil) {
+        self.store = store
+        self.initialTemplate = initialTemplate
+    }
+
+    public var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Predicted Race Time Hero Card
+                    if let pred = prediction {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(pred.modelMode == "segmented_pcr" ? "SEGMENTED PCr (0% ΠΟΙΝΗ ΣΤΟ 1ο ΤΜΗΜΑ >150M)" : "SYMMETRIC BROKEN SET PCr")
+                                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.electricLime)
+                                    Text("Πρόβλεψη Αγώνα \(pred.targetDistanceM)m")
+                                        .font(.system(size: 18, weight: .black))
+                                        .foregroundStyle(L4NETheme.textPrimary)
+                                    Text("Pace: \(L4NEDurationFormatter.formatPacePer100m(pred.predictedPaceMsPer100m)) · Broken: \(L4NEDurationFormatter.formatMs(pred.rawBrokenTimeMs))")
+                                        .font(.system(size: 12, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.textSecondary)
+                                }
+                                Spacer()
+                                Text(pred.formattedPredictedTime)
+                                    .font(.system(size: 34, weight: .black, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundStyle(L4NETheme.prGold)
+                            }
+
+                            Divider().overlay(L4NETheme.border)
+
+                            HStack(spacing: 16) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("RECOVERY (1-e^-t/τ)")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.textSecondary)
+                                    Text(String(format: "%.2f%%", pred.recoveryFactor))
+                                        .font(.system(size: 15, weight: .black, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.signalGreen)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("ΠΟΙΝΗ Δ%")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.textSecondary)
+                                    Text(String(format: "+%.2f%%", pred.penaltyDeltaPct))
+                                        .font(.system(size: 15, weight: .black, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.warningAmber)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("ΣΥΝΤΕΛΕΣΤΗΣ k")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.textSecondary)
+                                    Text(String(format: "%.2f", pred.kCoefficient))
+                                        .font(.system(size: 15, weight: .black, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.textPrimary)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("ΣΤΑΘΕΡΑ τ")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.textSecondary)
+                                    Text(String(format: "%.0fs", pred.tauSeconds))
+                                        .font(.system(size: 15, weight: .black, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.textPrimary)
+                                }
+                            }
+                        }
+                        .padding(16)
+                        .l4neBevelCard(cornerRadius: 16, hasInnerGlow: true)
+                    }
+
+                    // 1-Tap Presets (Template Auto-Load + Case Studies A & B + 8x50 + 4x100)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("ΠΡΩΤΟΚΟΛΛΑ & CASE STUDIES (1-TAP)")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(L4NETheme.textSecondary)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                if let tpl = initialTemplate {
+                                    Button("Από '\(tpl.name)'") {
+                                        loadFromTemplate(tpl)
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 7)
+                                    .background(L4NETheme.electricLime)
+                                    .foregroundStyle(Color.black)
+                                    .clipShape(Capsule())
+                                }
+
+                                Button("4×50m @ 15s → 200m (1:17.00)") {
+                                    applyCaseStudyB_4x50()
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(L4NETheme.cardSurface)
+                                .foregroundStyle(L4NETheme.textPrimary)
+                                .clipShape(Capsule())
+
+                                Button("200m + 150m → 400m (2:53.59)") {
+                                    applyCaseStudyA_200_150()
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(L4NETheme.cardSurface)
+                                .foregroundStyle(L4NETheme.textPrimary)
+                                .clipShape(Capsule())
+
+                                Button("8×50m @ 30s → 400m") {
+                                    applyPreset8x50()
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(L4NETheme.cardSurface)
+                                .foregroundStyle(L4NETheme.textPrimary)
+                                .clipShape(Capsule())
+
+                                Button("4×100m @ 30s → 400m") {
+                                    applyPreset4x100()
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(L4NETheme.cardSurface)
+                                .foregroundStyle(L4NETheme.textPrimary)
+                                .clipShape(Capsule())
+                            }
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        }
+                    }
+
+                    // Parameters Configuration Card
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("ΠΑΡΑΜΕΤΡΟΙ ΜΟΝΤΕΛΟΥ PCr")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(L4NETheme.textSecondary)
+
+                        Picker("Απόσταση Στόχος", selection: $targetDistanceM) {
+                            Text("100m").tag(100)
+                            Text("200m (k=0.16)").tag(200)
+                            Text("400m (k=0.13)").tag(400)
+                            Text("800m (k=0.11)").tag(800)
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: targetDistanceM) { _, newDist in
+                            customK = newDist <= 200 ? 0.16 : (newDist <= 400 ? 0.13 : 0.11)
+                            recalculate()
+                        }
+
+                        Stepper(
+                            String(format: "Σταθερά Χρόνου (τ): %.0f s", tauSeconds),
+                            value: $tauSeconds,
+                            in: 15.0...45.0,
+                            step: 1.0
+                        )
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .onChange(of: tauSeconds) { _, _ in recalculate() }
+
+                        Stepper(
+                            String(format: "Συντελεστής Ταχύτητας (k): %.2f", customK),
+                            value: $customK,
+                            in: 0.08...0.25,
+                            step: 0.01
+                        )
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .onChange(of: customK) { _, _ in recalculate() }
+
+                        Picker("Fatigue Factor (FF)", selection: $fatigueMode) {
+                            Text("Auto").tag(0)
+                            Text("FF 0.000 (<15s)").tag(1)
+                            Text("FF 0.015 (≥20s)").tag(2)
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: fatigueMode) { _, _ in recalculate() }
+                    }
+                    .padding(14)
+                    .l4neBevelCard(cornerRadius: 14)
+
+                    // Interactive Segments Editor
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("ΤΜΗΜΑΤΑ BROKEN SET (\(segments.count))")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundStyle(L4NETheme.textSecondary)
+                            Spacer()
+                            Button("+ Προσθήκη Τμήματος") {
+                                let last = segments.last ?? PcrSegmentInput(distanceM: 50, durationMs: 18_500, restBeforeMs: 15_000)
+                                segments.append(
+                                    PcrSegmentInput(
+                                        distanceM: last.distanceM,
+                                        durationMs: last.durationMs,
+                                        restBeforeMs: last.restBeforeMs > 0 ? last.restBeforeMs : 15_000
+                                    )
+                                )
+                                recalculate()
+                            }
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(L4NETheme.electricLime)
+                        }
+
+                        ForEach(Array(segments.enumerated()), id: \.offset) { idx, _ in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("ΤΜΗΜΑ #\(idx + 1)")
+                                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.electricLime)
+                                    Spacer()
+                                    if segments.count > 1 {
+                                        Button(role: .destructive) {
+                                            segments.remove(at: idx)
+                                            recalculate()
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(L4NETheme.regressionRed)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+
+                                Stepper(
+                                    "Απόσταση: \(segments[idx].distanceM)m",
+                                    value: Binding(
+                                        get: { segments[idx].distanceM },
+                                        set: {
+                                            segments[idx].distanceM = $0
+                                            recalculate()
+                                        }
+                                    ),
+                                    in: 25...800,
+                                    step: 25
+                                )
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+
+                                Stepper(
+                                    "Χρόνος: \(L4NEDurationFormatter.formatMs(segments[idx].durationMs))",
+                                    value: Binding(
+                                        get: { Double(segments[idx].durationMs) / 1000.0 },
+                                        set: {
+                                            segments[idx].durationMs = Int64(($0 * 1000.0).rounded())
+                                            recalculate()
+                                        }
+                                    ),
+                                    in: 5.0...600.0,
+                                    step: 0.1
+                                )
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+
+                                if idx > 0 {
+                                    Stepper(
+                                        "Διάλειμμα πριν το #\(idx + 1): \(Int(segments[idx].restBeforeMs / 1000))s",
+                                        value: Binding(
+                                            get: { Int(segments[idx].restBeforeMs / 1000) },
+                                            set: {
+                                                segments[idx].restBeforeMs = Int64($0) * 1000
+                                                recalculate()
+                                            }
+                                        ),
+                                        in: 0...300,
+                                        step: 5
+                                    )
+                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                }
+                            }
+                            .padding(12)
+                            .background(L4NETheme.mutedSurface)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
+                    .padding(14)
+                    .l4neBevelCard(cornerRadius: 14)
+
+                    // Segment-by-Segment Penalized Output Table
+                    if let pred = prediction {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("ΑΝΑΛΥΣΗ ΤΜΗΜΑΤΩΝ & ΠΟΙΝΗΣ PCr")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundStyle(L4NETheme.textSecondary)
+
+                            ForEach(pred.segments) { seg in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack {
+                                        Text("#\(seg.segmentIndex) · \(seg.distanceM)m")
+                                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(L4NETheme.textPrimary)
+                                        Spacer()
+                                        Text("\(L4NEDurationFormatter.formatMs(seg.rawDurationMs)) → \(L4NEDurationFormatter.formatMs(seg.adjustedDurationMs))")
+                                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                                            .foregroundStyle(seg.penaltyDeltaPct == 0 ? L4NETheme.signalGreen : L4NETheme.prGold)
+                                    }
+                                    Text(seg.note)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundStyle(L4NETheme.textSecondary)
+                                }
+                                .padding(10)
+                                .background(L4NETheme.mutedSurface)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                        }
+                        .padding(14)
+                        .l4neBevelCard(cornerRadius: 14)
+                    }
+                }
+                .padding(16)
+            }
+            .background(L4NETheme.background.ignoresSafeArea())
+            .navigationTitle("PCr Recalculator")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Κλείσιμο") { dismiss() }
+                }
+            }
+            .onAppear {
+                if let tpl = initialTemplate {
+                    loadFromTemplate(tpl)
+                } else {
+                    recalculate()
+                }
+            }
+        }
+    }
+
+    private func loadFromTemplate(_ tpl: TemplateWithVersion) {
+        if let preds = try? store.client.getTemplatePcrPredictions(templateId: tpl.id),
+           let primary = preds.last ?? preds.first {
+            targetDistanceM = primary.targetDistanceM
+            tauSeconds = primary.tauSeconds
+            customK = primary.kCoefficient
+            let loadedSegments: [PcrSegmentInput] = primary.segments
+                .filter { !$0.note.contains("Εκτίμηση υπολειπόμενων") }
+                .enumerated()
+                .map { idx, s in
+                    PcrSegmentInput(
+                        distanceM: s.distanceM,
+                        durationMs: s.rawDurationMs,
+                        restBeforeMs: idx == 0 ? 0 : Int64((s.restBeforeSec * 1000.0).rounded())
+                    )
+                }
+            if !loadedSegments.isEmpty {
+                segments = loadedSegments
+            }
+        }
+        recalculate()
+    }
+
+    private func applyCaseStudyA_200_150() {
+        targetDistanceM = 400
+        tauSeconds = 28.0
+        customK = 0.13
+        fatigueMode = 2
+        segments = [
+            PcrSegmentInput(distanceM: 200, durationMs: 82_000, restBeforeMs: 0),
+            PcrSegmentInput(distanceM: 150, durationMs: 63_900, restBeforeMs: 20_000)
+        ]
+        recalculate()
+    }
+
+    private func applyCaseStudyB_4x50() {
+        targetDistanceM = 200
+        tauSeconds = 28.0
+        customK = 0.16
+        fatigueMode = 1
+        segments = [
+            PcrSegmentInput(distanceM: 50, durationMs: 17_000, restBeforeMs: 0),
+            PcrSegmentInput(distanceM: 50, durationMs: 18_000, restBeforeMs: 15_000),
+            PcrSegmentInput(distanceM: 50, durationMs: 18_700, restBeforeMs: 15_000),
+            PcrSegmentInput(distanceM: 50, durationMs: 18_500, restBeforeMs: 15_000)
+        ]
+        recalculate()
+    }
+
+    private func applyPreset8x50() {
+        targetDistanceM = 400
+        tauSeconds = 28.0
+        customK = 0.13
+        fatigueMode = 0
+        let times: [Int64] = [18_200, 18_350, 18_400, 18_300, 18_250, 18_300, 18_150, 17_950]
+        segments = times.enumerated().map { idx, ms in
+            PcrSegmentInput(distanceM: 50, durationMs: ms, restBeforeMs: idx == 0 ? 0 : 30_000)
+        }
+        recalculate()
+    }
+
+    private func applyPreset4x100() {
+        targetDistanceM = 400
+        tauSeconds = 28.0
+        customK = 0.13
+        fatigueMode = 0
+        let times: [Int64] = [39_500, 40_200, 40_600, 40_100]
+        segments = times.enumerated().map { idx, ms in
+            PcrSegmentInput(distanceM: 100, durationMs: ms, restBeforeMs: idx == 0 ? 0 : 30_000)
+        }
+        recalculate()
+    }
+
+    private func recalculate() {
+        let ffOpt: Double? = {
+            switch fatigueMode {
+            case 1: return 0.0
+            case 2: return 0.015
+            default: return nil
+            }
+        }()
+        prediction = try? store.client.calculatePcrPrediction(
+            PcrRecalculatorInput(
+                targetDistanceM: targetDistanceM,
+                tauSeconds: tauSeconds,
+                customK: customK,
+                customFf: ffOpt,
+                segments: segments
+            )
+        )
     }
 }

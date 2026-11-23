@@ -17,7 +17,9 @@ pub mod models;
 
 #[cfg(test)]
 mod tests {
-    use crate::analytics::{compare_sessions, compute_epley_1rm_kg, compute_swolf_score};
+    use crate::analytics::{
+        calculate_pcr_prediction, compare_sessions, compute_epley_1rm_kg, compute_swolf_score,
+    };
     use crate::db::L4neDatabase;
     use crate::engine::{
         compute_protocol_hash, evaluate_live_timer_tick, expand_template_slots, format_duration_ms,
@@ -26,12 +28,26 @@ mod tests {
     use crate::ffi::execute_command_json_str;
     use crate::models::{
         AppSettings, CoreError, CreateTemplateInput, EnvironmentType, ImportWorkoutInput,
-        LiveTimerTickInput, LogSessionInput, RecordKind, RepInput, RestMode, SportCategory,
-        TemplateBlockInput, ThemePreset, UpdateTemplateProtocolInput, WorkoutSourceType,
+        LiveTimerTickInput, LogSessionInput, PcrRecalculatorInput, PcrSegmentInput, RecordKind,
+        RepInput, RestMode, SportCategory, TemplateBlockInput, ThemePreset,
+        UpdateTemplateProtocolInput, WorkoutSourceType,
     };
 
     #[test]
     fn test_athletic_centisecond_numpad_parser_and_formatter() {
+        // Left-to-right progressive input: "3" -> 3.00s, "32" -> 32.00s, "324" -> 32.40s, "3240" -> 32.40s
+        let p_one = parse_athletic_numpad("3").expect("should parse 1 digit as 3.00s");
+        assert_eq!(p_one.duration_ms, 3_000);
+        assert_eq!(p_one.formatted_display, "3.00");
+
+        let p_two = parse_athletic_numpad("32").expect("should parse 2 digits as 32.00s");
+        assert_eq!(p_two.duration_ms, 32_000);
+        assert_eq!(p_two.formatted_display, "32.00");
+
+        let p_three = parse_athletic_numpad("324").expect("should parse 3 digits as 32.40s");
+        assert_eq!(p_three.duration_ms, 32_400);
+        assert_eq!(p_three.formatted_display, "32.40");
+
         let p1 = parse_athletic_numpad("3240").expect("should parse 3240");
         assert_eq!(p1.duration_ms, 32_400);
         assert_eq!(p1.formatted_display, "32.40");
@@ -503,5 +519,80 @@ mod tests {
             execute_command_json_str(":memory:", r#"{"action":"parse_numpad","digits":"3240"}"#);
         assert!(ffi_numpad.contains(r#""ok":true"#));
         assert!(ffi_numpad.contains(r#""duration_ms":32400"#));
+    }
+
+    #[test]
+    fn test_segmented_pcr_race_prediction_model_case_studies_a_and_b() {
+        // Case Study A (ΤΗΕ ΘΕΩΡΙ.txt §3A): Asymmetric 400m (200m @ 82.0s + 20s stop + 150m @ 63.9s -> 2:53.59)
+        let case_a = calculate_pcr_prediction(&PcrRecalculatorInput {
+            target_distance_m: 400,
+            label: Some("Case Study A — 400m Segmented".to_string()),
+            tau_seconds: Some(28.0),
+            custom_k: Some(0.13),
+            custom_ff: Some(0.015),
+            tail_override_ms: None,
+            segments: vec![
+                PcrSegmentInput {
+                    distance_m: 200,
+                    duration_ms: 82_000,
+                    rest_before_ms: 0,
+                },
+                PcrSegmentInput {
+                    distance_m: 150,
+                    duration_ms: 63_900,
+                    rest_before_ms: 20_000,
+                },
+            ],
+        })
+        .expect("Case Study A should succeed");
+
+        assert_eq!(case_a.model_mode, "segmented_pcr");
+        assert_eq!(case_a.segments[0].penalty_delta_pct, 0.0);
+        assert_eq!(case_a.segments[0].adjusted_duration_ms, 82_000);
+        assert_eq!(case_a.segments[1].penalty_delta_pct, 8.13);
+        assert_eq!(case_a.segments[1].adjusted_duration_ms, 69_090);
+        assert_eq!(case_a.extrapolated_tail_distance_m, 50);
+        assert_eq!(case_a.extrapolated_tail_ms, 22_500);
+        assert_eq!(case_a.predicted_race_time_ms, 173_590);
+        assert_eq!(case_a.formatted_predicted_time, "2:53.59");
+
+        // Case Study B (ΤΗΕ ΘΕΩΡΙ.txt §3B): Symmetric 200m (4x50m @ 15s stop: 17.0, 18.0, 18.7, 18.5 = 72.2s -> 76.99s)
+        let case_b = calculate_pcr_prediction(&PcrRecalculatorInput {
+            target_distance_m: 200,
+            label: Some("Case Study B — 200m Symmetric".to_string()),
+            tau_seconds: Some(28.0),
+            custom_k: Some(0.16),
+            custom_ff: Some(0.0),
+            tail_override_ms: None,
+            segments: vec![
+                PcrSegmentInput {
+                    distance_m: 50,
+                    duration_ms: 17_000,
+                    rest_before_ms: 0,
+                },
+                PcrSegmentInput {
+                    distance_m: 50,
+                    duration_ms: 18_000,
+                    rest_before_ms: 15_000,
+                },
+                PcrSegmentInput {
+                    distance_m: 50,
+                    duration_ms: 18_700,
+                    rest_before_ms: 15_000,
+                },
+                PcrSegmentInput {
+                    distance_m: 50,
+                    duration_ms: 18_500,
+                    rest_before_ms: 15_000,
+                },
+            ],
+        })
+        .expect("Case Study B should succeed");
+
+        assert_eq!(case_b.model_mode, "symmetric_broken");
+        assert_eq!(case_b.raw_broken_time_ms, 72_200);
+        assert_eq!(case_b.penalty_delta_pct, 6.64);
+        assert_eq!(case_b.predicted_race_time_ms, 76_990);
+        assert_eq!(case_b.formatted_predicted_time, "1:16.99");
     }
 }

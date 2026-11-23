@@ -458,6 +458,21 @@ impl L4neDatabase {
         self.get_template(template_id)
     }
 
+    /// Permanently deletes a Template, all its versions/blocks, and its associated sessions/repetitions.
+    pub fn delete_template(&mut self, template_id: &str) -> Result<bool, CoreError> {
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "DELETE FROM sessions WHERE template_id = ?1",
+            params![template_id],
+        )?;
+        let deleted = tx.execute(
+            "DELETE FROM templates WHERE id = ?1",
+            params![template_id],
+        )?;
+        tx.commit()?;
+        Ok(deleted > 0)
+    }
+
     /// Lists all protocol versions (`v1..vN`) of a template in descending version order.
     pub fn list_template_versions(
         &self,

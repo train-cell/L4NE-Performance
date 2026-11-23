@@ -514,12 +514,12 @@ public struct L4NEStravaSplitsBarView: View {
 
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("STRAVA SPLIT PACE DISTRIBUTION")
+                Text("ΡΥΘΜΟΣ ΑΝΑ ΕΠΑΝΑΛΗΨΗ (SPLITS)")
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .foregroundStyle(palette.textSecondary)
                     .tracking(1.1)
                 Spacer()
-                Text("FASTEST REP HIGHLIGHTED")
+                Text("ΤΑΧΥΤΕΡΗ ΕΠΑΝΑΛΗΨΗ")
                     .font(.system(size: 8, weight: .bold, design: .monospaced))
                     .foregroundStyle(palette.prGold)
             }
@@ -719,36 +719,24 @@ public struct L4NEStartingBlockIcon: View {
 public struct L4NEBrandWordmark: View {
     public let subtitle: String
     public let palette: L4NEPalette
+    public let isMaximized: Bool
 
-    public init(subtitle: String = "PERFORMANCE", palette: L4NEPalette = L4NETheme.activePalette) {
+    public init(
+        subtitle: String = "PERFORMANCE",
+        palette: L4NEPalette = L4NETheme.activePalette,
+        isMaximized: Bool = true
+    ) {
         self.subtitle = subtitle
         self.palette = palette
+        self.isMaximized = isMaximized
     }
 
     public var body: some View {
         HStack(spacing: 11) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(palette.surface1)
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [palette.highlightEdge, palette.primaryAccent.opacity(0.65)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1.2
-                            )
-                    )
-
-                L4NEStartingBlockIcon(
-                    blockColor: palette.textPrimary,
-                    cutoutColor: palette.surface1,
-                    size: 34
-                )
-            }
+            L4NEAnimatedStartingBlockBadge(
+                palette: palette,
+                isMaximized: isMaximized
+            )
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 0) {

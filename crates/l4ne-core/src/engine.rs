@@ -169,7 +169,14 @@ pub fn compute_protocol_hash(
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Parses a sequence of digits entered on the Athletic Centisecond Numpad into integer milliseconds.
+/// Parses a sequence of digits entered on the Athletic Centisecond Numpad from left to right into integer milliseconds.
+///
+/// Left-to-right input rules:
+/// - 1 digit (`"3"`): `3` seconds -> `3.00s` (`3_000 ms`)
+/// - 2 digits (`"32"`): `32` seconds -> `32.00s` (`32_000 ms`)
+/// - 3 digits (`"324"`): `32` seconds + `4` tenths (`40` cs) -> `32.40s` (`32_400 ms`)
+/// - 4 digits (`"3240"`): `32` seconds + `40` centiseconds -> `32.40s` (`32_400 ms`)
+/// - 5..=7 digits (`"10855"`): `1` minute + `08` seconds + `55` centiseconds -> `1:08.55` (`68_550 ms`)
 pub fn parse_athletic_numpad(raw_input: &str) -> Result<NumpadParseResult, CoreError> {
     let digits: String = raw_input
         .chars()
@@ -192,24 +199,37 @@ pub fn parse_athletic_numpad(raw_input: &str) -> Result<NumpadParseResult, CoreE
         ));
     }
 
-    let val: i64 = digits
-        .parse()
-        .map_err(|_| CoreError::Validation("Invalid digit sequence".to_string()))?;
-
-    let centiseconds = val % 100;
-    let total_seconds_part = val / 100;
-
-    let (minutes, seconds) = if digits.len() <= 4 {
-        (0, total_seconds_part)
-    } else {
-        let mins = total_seconds_part / 100;
-        let secs = total_seconds_part % 100;
-        if secs >= 60 {
-            return Err(CoreError::Validation(format!(
-                "Seconds component ({secs}) must be < 60 when minutes are entered"
-            )));
+    let (minutes, seconds, centiseconds): (i64, i64, i64) = match digits.len() {
+        1 => {
+            let secs: i64 = digits.parse().unwrap_or(0);
+            (0, secs, 0)
         }
-        (mins, secs)
+        2 => {
+            let secs: i64 = digits.parse().unwrap_or(0);
+            (0, secs, 0)
+        }
+        3 => {
+            let secs: i64 = digits[0..2].parse().unwrap_or(0);
+            let tenths: i64 = digits[2..3].parse().unwrap_or(0);
+            (0, secs, tenths * 10)
+        }
+        4 => {
+            let secs: i64 = digits[0..2].parse().unwrap_or(0);
+            let cs: i64 = digits[2..4].parse().unwrap_or(0);
+            (0, secs, cs)
+        }
+        len => {
+            let min_end = len - 4;
+            let mins: i64 = digits[0..min_end].parse().unwrap_or(0);
+            let secs: i64 = digits[min_end..min_end + 2].parse().unwrap_or(0);
+            let cs: i64 = digits[min_end + 2..len].parse().unwrap_or(0);
+            if secs >= 60 {
+                return Err(CoreError::Validation(format!(
+                    "Seconds component ({secs}) must be < 60 when minutes are entered"
+                )));
+            }
+            (mins, secs, cs)
+        }
     };
 
     let duration_ms = (minutes * 60_000) + (seconds * 1_000) + (centiseconds * 10);

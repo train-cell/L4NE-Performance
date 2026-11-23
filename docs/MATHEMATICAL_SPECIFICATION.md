@@ -65,3 +65,37 @@ $$A_{\text{best}} = \max_{1 \le i \le N} \text{round}_2(a_i)$$
   $$\text{Improvement}(\%) = \text{round}_2\left(\frac{T_{\text{baseline}} - T_{\text{current}}}{T_{\text{baseline}}} \times 100\right)$$
 - **For Gym Tonnage / Field Attempts (higher value = better performance):**
   $$\text{Improvement}(\%) = \text{round}_2\left(\frac{V_{\text{current}} - V_{\text{baseline}}}{V_{\text{baseline}}} \times 100\right)$$
+
+---
+
+## 5. Segmented PCr Race Prediction & Recalculator Model (`v2.0`)
+
+Implemented in `crates/l4ne-core/src/analytics.rs` (`calculate_pcr_prediction` and `compute_template_pcr_predictions`):
+
+### 5.1 Phosphocreatine (PCr) Resynthesis & Penalty Factor ($\Delta$)
+Given a rest interval $t$ (in seconds) and the athlete's PCr time constant $\tau = 28.0\text{ s}$:
+$$\text{Recovery}(t) = 1 - e^{-t / \tau}$$
+$$\Delta = (k \cdot \text{Recovery}(t)) + FF$$
+where:
+- $k = 0.16$ for $200\text{m}$ race projections ($4\times 50\text{m}$, $2\times 100\text{m}$)
+- $k = 0.13$ for $400\text{m}$ race projections ($8\times 50\text{m}$, $4\times 100\text{m}$, $200\text{m} + 150\text{m}$)
+- $FF = 0.000$ for sprint rests ($t < 20\text{s}$), and $FF = 0.015$ for deep lactic recovery ($t \ge 20\text{s}$).
+
+### 5.2 Segmented vs. Symmetric Broken Set Rule
+- **Segmented Penalty Mode (`d_1 > 150m`, e.g., Case Study A: `200m + 20s stop + 150m` $\to 400\text{m}$):**
+  - Segment 1 ($d_1 > 150\text{m}$) is swum before any rest stop with zero energy advantage and receives **0% penalty** ($\Delta_1 = 0$, $T'_1 = T_1$).
+  - Subsequent segments ($i \ge 2$) receive penalty $\Delta_i$: $T'_i = T_i \cdot (1 + \Delta_i)$.
+  - Any remaining tail distance $D_{\text{target}} - \sum d_i$ is extrapolated under heavy fatigue ($2:53.59$ for Case Study A).
+- **Symmetric Broken Set Mode (`d_1 <= 150m`, e.g., Case Study B: `4×50m @ 15s stop` $\to 200\text{m}$):**
+  - Applies $\Delta$ across the broken set total $T_{\text{race}} = T_{\text{broken}} \cdot (1 + \Delta)$ ($76.99\text{s} / 1:17.00$ for Case Study B).
+
+---
+
+## 6. Left-to-Right Athletic Centisecond Numpad Parser
+
+Implemented in `crates/l4ne-core/src/engine.rs` (`parse_athletic_numpad`):
+- 1 digit (`"3"`): `3.00s` (`3,000 ms`)
+- 2 digits (`"32"`): `32.00s` (`32,000 ms`)
+- 3 digits (`"324"`): `32.40s` (`32,400 ms`)
+- 4 digits (`"3240"`): `32.40s` (`32,400 ms`)
+- 5..=7 digits (`"10855"`): `1:08.55` (`68,550 ms`)

@@ -57,7 +57,7 @@ public struct LivePoolsideTimerView: View {
                 // Top Protocol & Slot Status Bar
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("LIVE POOLSIDE COMPANION · v1.1")
+                        Text("L4NE PERFORMANCE · LIVE TIMER")
                             .font(.system(size: 10, weight: .black, design: .monospaced))
                             .foregroundStyle(L4NETheme.electricLime)
                             .tracking(1.4)

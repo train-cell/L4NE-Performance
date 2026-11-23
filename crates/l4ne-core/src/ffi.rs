@@ -1,11 +1,11 @@
 //! C-ABI Foreign Function Interface (`l4ne_core::ffi`) for Swift (iOS/macOS) and Kotlin/JNI (Android).
 
-use crate::analytics::compare_sessions;
+use crate::analytics::{calculate_pcr_prediction, compare_sessions, compute_template_pcr_predictions};
 use crate::db::L4neDatabase;
 use crate::engine::{evaluate_live_timer_tick, parse_athletic_numpad};
 use crate::models::{
     AppSettings, CoreError, CreateTemplateInput, DailyHealthSnapshot, ImportWorkoutInput,
-    LiveTimerTickInput, LogSessionInput, UpdateTemplateProtocolInput,
+    LiveTimerTickInput, LogSessionInput, PcrRecalculatorInput, UpdateTemplateProtocolInput,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -47,6 +47,9 @@ pub enum FfiCommand {
         template_id: String,
         is_archived: bool,
         now_ms: Option<i64>,
+    },
+    DeleteTemplate {
+        template_id: String,
     },
     ExpandTemplateSlots {
         template_version_id: String,
@@ -109,6 +112,12 @@ pub enum FfiCommand {
     },
     ComputeLiveTimerTick {
         payload: LiveTimerTickInput,
+    },
+    CalculatePcrPrediction {
+        payload: PcrRecalculatorInput,
+    },
+    TemplatePcrPredictions {
+        template_id: String,
     },
     ExportJson {
         now_ms: Option<i64>,
@@ -174,6 +183,12 @@ pub fn execute_command_json_str(db_path: &str, request_json: &str) -> String {
         FfiCommand::ComputeLiveTimerTick { payload } => {
             return FfiEnvelope::success(evaluate_live_timer_tick(payload));
         }
+        FfiCommand::CalculatePcrPrediction { payload } => {
+            return match calculate_pcr_prediction(payload) {
+                Ok(res) => FfiEnvelope::success(res),
+                Err(e) => FfiEnvelope::failure(e.to_string()),
+            };
+        }
         _ => {}
     }
 
@@ -207,6 +222,10 @@ pub fn execute_command_json_str(db_path: &str, request_json: &str) -> String {
             is_archived,
             now_ms.unwrap_or_else(current_epoch_ms),
         )?)?),
+        FfiCommand::DeleteTemplate { template_id } => {
+            let deleted = db.delete_template(&template_id)?;
+            Ok(json!({ "deleted": deleted }))
+        }
         FfiCommand::ExpandTemplateSlots {
             template_version_id,
         } => Ok(serde_json::to_value(
@@ -238,6 +257,13 @@ pub fn execute_command_json_str(db_path: &str, request_json: &str) -> String {
         FfiCommand::TemplateAnalytics { template_id } => Ok(serde_json::to_value(
             db.get_template_analytics(&template_id)?,
         )?),
+        FfiCommand::TemplatePcrPredictions { template_id } => {
+            let tpl = db.get_template(&template_id)?;
+            let sessions = db.list_sessions_for_template(&template_id)?;
+            Ok(serde_json::to_value(compute_template_pcr_predictions(
+                &tpl, &sessions,
+            ))?)
+        }
         FfiCommand::CompareSessions {
             current_session_id,
             baseline_session_id,
@@ -291,7 +317,9 @@ pub fn execute_command_json_str(db_path: &str, request_json: &str) -> String {
             Ok(json!({ "csv": csv }))
         }
         FfiCommand::DatabaseStats => Ok(serde_json::to_value(db.get_database_diagnostics()?)?),
-        FfiCommand::ParseNumpad { .. } | FfiCommand::ComputeLiveTimerTick { .. } => unreachable!(),
+        FfiCommand::ParseNumpad { .. }
+        | FfiCommand::ComputeLiveTimerTick { .. }
+        | FfiCommand::CalculatePcrPrediction { .. } => unreachable!(),
     })();
 
     match result {

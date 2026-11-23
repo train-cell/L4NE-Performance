@@ -2,6 +2,16 @@ import Foundation
 
 // MARK: - Domain Enums
 
+public struct L4NEEquipmentOption: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let title: String
+
+    public init(id: String, title: String) {
+        self.id = id
+        self.title = title
+    }
+}
+
 public enum SportCategory: String, Codable, CaseIterable, Sendable {
     case swimming
     case finswimming
@@ -11,7 +21,7 @@ public enum SportCategory: String, Codable, CaseIterable, Sendable {
 
     public var displayTitle: String {
         switch self {
-        case .swimming: return "Κολύμβηση"
+        case .swimming: return "Κλασική Κολύμβηση"
         case .finswimming: return "Τεχνική Κολύμβηση"
         case .track: return "Στίβος (Track)"
         case .field: return "Κονίστρα (Field)"
@@ -36,10 +46,82 @@ public enum SportCategory: String, Codable, CaseIterable, Sendable {
         case .track:
             return ["sprint", "hurdles", "middle_distance", "relay_split"]
         case .field:
-            return ["long_jump", "high_jump", "triple_jump", "shot_put", "javelin"]
+            return ["long_jump", "high_jump", "triple_jump", "pole_vault", "shot_put", "discus", "javelin", "hammer"]
         case .gym:
             return ["back_squat", "front_squat", "deadlift", "bench_press", "pull_up", "leg_press"]
         }
+    }
+
+    /// Sport-specific equipment catalog for Technical Swimming, Classical Swimming, Track, Field, and Gym.
+    public var availableEquipment: [L4NEEquipmentOption] {
+        switch self {
+        case .finswimming:
+            return [
+                L4NEEquipmentOption(id: "monofin", title: "Μονοπέδιλο"),
+                L4NEEquipmentOption(id: "snorkel", title: "Αναπνευστήρας"),
+                L4NEEquipmentOption(id: "mask", title: "Μάσκα"),
+                L4NEEquipmentOption(id: "oxygen_tank", title: "Φιάλη Οξυγόνου"),
+                L4NEEquipmentOption(id: "bifins", title: "Διπλά Πέδιλα"),
+                L4NEEquipmentOption(id: "kickboard", title: "Σανίδα")
+            ]
+        case .swimming:
+            return [
+                L4NEEquipmentOption(id: "goggles", title: "Γυαλάκια"),
+                L4NEEquipmentOption(id: "paddles", title: "Χεράκια (Paddles)"),
+                L4NEEquipmentOption(id: "pullbuoy", title: "Pull Buoy"),
+                L4NEEquipmentOption(id: "kickboard", title: "Σανίδα (Kickboard)"),
+                L4NEEquipmentOption(id: "swim_fins", title: "Πεδιλάκια Κολύμβησης"),
+                L4NEEquipmentOption(id: "center_snorkel", title: "Αναπνευστήρας"),
+                L4NEEquipmentOption(id: "parachute", title: "Αλεξίπτωτο Αντίστασης")
+            ]
+        case .track:
+            return [
+                L4NEEquipmentOption(id: "spikes", title: "Spikes (Καρφιά)"),
+                L4NEEquipmentOption(id: "starting_blocks", title: "Βατήρας Εκκίνησης"),
+                L4NEEquipmentOption(id: "hurdles", title: "Εμπόδια (Hurdles)"),
+                L4NEEquipmentOption(id: "sled", title: "Έλκηθρο Αντίστασης"),
+                L4NEEquipmentOption(id: "baton", title: "Σκυτάλη"),
+                L4NEEquipmentOption(id: "racing_flats", title: "Αγωνιστικά Παπούτσια")
+            ]
+        case .field:
+            return [
+                L4NEEquipmentOption(id: "field_spikes", title: "Spikes Κονίστρας"),
+                L4NEEquipmentOption(id: "shot_put_implement", title: "Σφαίρα"),
+                L4NEEquipmentOption(id: "discus_implement", title: "Δίσκος"),
+                L4NEEquipmentOption(id: "javelin_implement", title: "Ακόντιο"),
+                L4NEEquipmentOption(id: "hammer_implement", title: "Σφύρα"),
+                L4NEEquipmentOption(id: "vault_pole", title: "Κοντάρι"),
+                L4NEEquipmentOption(id: "takeoff_board", title: "Βαλβίδα Άλματος")
+            ]
+        case .gym:
+            return [
+                L4NEEquipmentOption(id: "barbell", title: "Μπάρα (Barbell)"),
+                L4NEEquipmentOption(id: "dumbbells", title: "Αλτήρες"),
+                L4NEEquipmentOption(id: "lifting_belt", title: "Ζώνη Άρσης Βαρών"),
+                L4NEEquipmentOption(id: "straps", title: "Ιμάντες (Straps)"),
+                L4NEEquipmentOption(id: "kettlebell", title: "Kettlebell"),
+                L4NEEquipmentOption(id: "power_rack", title: "Rack / Μονόζυγο")
+            ]
+        }
+    }
+
+    public var defaultEquipmentIds: Set<String> {
+        switch self {
+        case .finswimming: return ["monofin", "snorkel", "mask"]
+        case .swimming: return ["goggles", "paddles", "pullbuoy"]
+        case .track: return ["spikes", "starting_blocks"]
+        case .field: return ["field_spikes", "takeoff_board"]
+        case .gym: return ["barbell", "lifting_belt"]
+        }
+    }
+
+    public static func equipmentDisplayTitle(for rawId: String) -> String {
+        for cat in SportCategory.allCases {
+            if let match = cat.availableEquipment.first(where: { $0.id == rawId }) {
+                return match.title
+            }
+        }
+        return rawId.uppercased()
     }
 }
 
@@ -103,21 +185,21 @@ public enum ThemePreset: String, Codable, CaseIterable, Identifiable, Sendable {
 
     public var displayTitle: String {
         switch self {
-        case .graphiteBevel: return "Graphite Bevel (Default)"
-        case .stravaObsidian: return "Strava Athletic Obsidian"
-        case .bevelNavy: return "LoggedIn Bevel Navy"
-        case .lane4Carbon: return "L4NE Pure Carbon & Lime"
-        case .minimalAlabaster: return "Minimalist Lab Daylight"
+        case .graphiteBevel: return "L4NE Dark"
+        case .stravaObsidian: return "Athletic Orange"
+        case .bevelNavy: return "Poolside Navy"
+        case .lane4Carbon: return "OLED Black"
+        case .minimalAlabaster: return "Daylight Clean"
         }
     }
 
     public var subtitle: String {
         switch self {
-        case .graphiteBevel: return "Matte Titanium Graphite · Top-Edge Specular Bevel · Electric Lime"
-        case .stravaObsidian: return "Obsidian Slate · Signal Orange #FC4C02 · Gold PR Medals"
-        case .bevelNavy: return "Deep Navy #0F172A · Tactile Bevel Surfaces · Electric Cyan #38BDF8"
-        case .lane4Carbon: return "OLED Black #07080A · High-Voltage Lime · Poolside Contrast"
-        case .minimalAlabaster: return "Clean Alabaster #F4F5F7 · Pure White Cards · Deep Graphite Ink"
+        case .graphiteBevel: return "Σκούρο ανθρακί με Electric Lime"
+        case .stravaObsidian: return "Σκούρο ανθρακί με αγωνιστικό πορτοκαλί"
+        case .bevelNavy: return "Βαθύ μπλε πισίνας με Cyan"
+        case .lane4Carbon: return "Απόλυτο μαύρο υψηλής αντίθεσης"
+        case .minimalAlabaster: return "Φωτεινό θέμα ημέρας"
         }
     }
 }
@@ -485,6 +567,81 @@ public struct TemplateAnalyticsReport: Codable, Equatable, Sendable {
     public let latestVsPrevious: SessionComparison?
     public let latestVsPersonalBest: SessionComparison?
     public let healthCorrelations: [SessionHealthCorrelationNote]
+    public let pcrPredictions: [PcrPredictionResult]?
+}
+
+public struct PcrSegmentInput: Codable, Equatable, Identifiable, Sendable {
+    public var id: String { "\(distanceM)-\(durationMs)-\(restBeforeMs)" }
+    public var distanceM: Int
+    public var durationMs: Int64
+    public var restBeforeMs: Int64
+
+    public init(distanceM: Int, durationMs: Int64, restBeforeMs: Int64) {
+        self.distanceM = distanceM
+        self.durationMs = durationMs
+        self.restBeforeMs = restBeforeMs
+    }
+}
+
+public struct PcrRecalculatorInput: Codable, Equatable, Sendable {
+    public var targetDistanceM: Int
+    public var label: String?
+    public var tauSeconds: Double?
+    public var customK: Double?
+    public var customFf: Double?
+    public var tailOverrideMs: Int64?
+    public var segments: [PcrSegmentInput]
+
+    public init(
+        targetDistanceM: Int,
+        label: String? = nil,
+        tauSeconds: Double? = 28.0,
+        customK: Double? = nil,
+        customFf: Double? = nil,
+        tailOverrideMs: Int64? = nil,
+        segments: [PcrSegmentInput]
+    ) {
+        self.targetDistanceM = targetDistanceM
+        self.label = label
+        self.tauSeconds = tauSeconds
+        self.customK = customK
+        self.customFf = customFf
+        self.tailOverrideMs = tailOverrideMs
+        self.segments = segments
+    }
+}
+
+public struct PcrSegmentBreakdown: Codable, Equatable, Identifiable, Sendable {
+    public var id: Int { segmentIndex }
+    public let segmentIndex: Int
+    public let distanceM: Int
+    public let rawDurationMs: Int64
+    public let restBeforeSec: Double
+    public let recoveryFactor: Double
+    public let penaltyDeltaPct: Double
+    public let adjustedDurationMs: Int64
+    public let note: String
+}
+
+public struct PcrPredictionResult: Codable, Equatable, Identifiable, Sendable {
+    public var id: String { "\(targetDistanceM)-\(label)" }
+    public let targetDistanceM: Int
+    public let label: String
+    public let modelMode: String
+    public let tauSeconds: Double
+    public let kCoefficient: Double
+    public let fatigueFactor: Double
+    public let swumDistanceM: Int
+    public let rawBrokenTimeMs: Int64
+    public let averageRestSec: Double
+    public let recoveryFactor: Double
+    public let penaltyDeltaPct: Double
+    public let extrapolatedTailDistanceM: Int
+    public let extrapolatedTailMs: Int64
+    public let predictedRaceTimeMs: Int64
+    public let formattedPredictedTime: String
+    public let predictedPaceMsPer100m: Int64
+    public let segments: [PcrSegmentBreakdown]
 }
 
 // MARK: - Workouts, HealthKit Matching & Timeline Models
