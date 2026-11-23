@@ -74,21 +74,47 @@ public struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    // Brand Header + Minimal/Maximized Switcher + Sound Toggle + Theme Menu
+                    // Brand Header + Custom Maximize Menu/Pill + Sound Toggle + Theme Menu
                     HStack(spacing: 8) {
                         L4NEBrandWordmark(
                             subtitle: "PERFORMANCE",
                             palette: store.activePalette,
-                            isMaximized: store.isMaximized
+                            isMaximized: store.isMaximized && store.maximizeConfig.animatedStartingBlockEnabled
                         )
                         Spacer()
 
-                        Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                store.toggleVisualMode()
+                        Menu {
+                            Button("0% — Minimal (Καθαρό Graphite)") {
+                                store.applyMaximizeConfig(.minimalPreset)
                             }
+                            Button("40% — Subtle (Ελαφριά Κίνηση)") {
+                                store.applyMaximizeConfig(.subtlePreset)
+                            }
+                            Button("75% — Balanced (Προτεινόμενο)") {
+                                store.applyMaximizeConfig(.balancedPreset)
+                            }
+                            Button("100% — Ultra Max (Πλήρη Γραφικά)") {
+                                store.applyMaximizeConfig(.ultraMaxPreset)
+                            }
+                            Divider()
+                            Toggle("💧 Σταγόνες", isOn: Binding(
+                                get: { store.maximizeConfig.dropletsEnabled },
+                                set: { store.maximizeConfig.dropletsEnabled = $0 }
+                            ))
+                            Toggle("🌊 Κύματα", isOn: Binding(
+                                get: { store.maximizeConfig.wavesEnabled },
+                                set: { store.maximizeConfig.wavesEnabled = $0 }
+                            ))
+                            Toggle("🚩 Σημαιάκια", isOn: Binding(
+                                get: { store.maximizeConfig.flagsEnabled },
+                                set: { store.maximizeConfig.flagsEnabled = $0 }
+                            ))
+                            Toggle("🏊 Βατήρας #4", isOn: Binding(
+                                get: { store.maximizeConfig.animatedStartingBlockEnabled },
+                                set: { store.maximizeConfig.animatedStartingBlockEnabled = $0 }
+                            ))
                         } label: {
-                            Text(store.visualMode.badgeTitle)
+                            Text(store.isMaximized ? "🎬 MAX \(Int(store.maximizeConfig.intensityPct))%" : "◐ MINIMAL")
                                 .font(.system(size: 9, weight: .black, design: .monospaced))
                                 .padding(.horizontal, 9)
                                 .padding(.vertical, 6)
@@ -96,7 +122,6 @@ public struct DashboardView: View {
                                 .foregroundStyle(store.isMaximized ? store.activePalette.textOnAccent : store.activePalette.textSecondary)
                                 .clipShape(Capsule())
                         }
-                        .buttonStyle(.plain)
 
                         Button {
                             store.toggleSound()
@@ -367,7 +392,7 @@ public struct DashboardView: View {
             .background(
                 L4NECinematicAmbientBackground(
                     palette: store.activePalette,
-                    isMaximized: store.isMaximized
+                    config: store.maximizeConfig
                 )
             )
             .sheet(item: $selectedTemplateForNumpad) { template in
@@ -2241,49 +2266,94 @@ public struct SettingsDataView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .l4neAnimatedBox(palette: store.activePalette, isMaximized: store.isMaximized, phaseSeed: 0.2, cornerRadius: 14)
 
-                    // Minimal vs Maximized Graphics & Audio Mode Selector
-                    VStack(alignment: .leading, spacing: 10) {
+                    // Custom Maximize Studio (Intensity % Slider + Individual Feature Toggles)
+                    VStack(alignment: .leading, spacing: 12) {
                         L4NEAnimatedSectionHeader(
-                            title: "ΓΡΑΦΙΚΑ, ANIMATIONS & ΗΧΟΙ (MINIMAL vs MAXIMIZED)",
+                            title: "CUSTOM MAXIMIZE STUDIO (\(Int(store.maximizeConfig.intensityPct))%)",
                             leftIcon: "sparkles",
-                            rightIcon: "speaker.wave.2.fill",
+                            rightIcon: "slider.horizontal.3",
                             palette: store.activePalette,
-                            isMaximized: store.isMaximized
+                            isMaximized: store.isMaximized && store.maximizeConfig.animatedIconsAndCardsEnabled
                         )
 
-                        HStack(spacing: 10) {
-                            ForEach(L4NEVisualMode.allCases) { mode in
-                                let selected = store.visualMode == mode
+                        // 4 Quick Intensity Presets
+                        HStack(spacing: 6) {
+                            ForEach([
+                                ("0% Minimal", L4NEMaximizeConfig.minimalPreset),
+                                ("40% Subtle", L4NEMaximizeConfig.subtlePreset),
+                                ("75% Balanced", L4NEMaximizeConfig.balancedPreset),
+                                ("100% Ultra", L4NEMaximizeConfig.ultraMaxPreset)
+                            ], id: \.0) { label, preset in
+                                let isActive = Int(store.maximizeConfig.intensityPct) == Int(preset.intensityPct)
                                 Button {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                        store.setVisualMode(mode)
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                        store.applyMaximizeConfig(preset)
                                     }
                                 } label: {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(mode.badgeTitle)
-                                            .font(.system(size: 12, weight: .black, design: .monospaced))
-                                        Text(mode == .maximized ? "Σταγόνες, Κύματα, Σημαιάκια, Βατήρας & 3D Duolingo Physics" : "Καθαρό Μινιμαλιστικό Round Graphite UI")
-                                            .font(.system(size: 10))
-                                            .lineLimit(2)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(12)
-                                    .background(selected ? store.activePalette.primaryAccent : store.activePalette.surface1)
-                                    .foregroundStyle(selected ? store.activePalette.textOnAccent : store.activePalette.textPrimary)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    Text(label)
+                                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.75)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 8)
+                                        .background(isActive ? store.activePalette.primaryAccent : store.activePalette.surface2)
+                                        .foregroundStyle(isActive ? store.activePalette.textOnAccent : store.activePalette.textPrimary)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
 
-                        Toggle("Ηχητικά Εφέ & Απτική Ανάδραση (Sounds & Haptics)", isOn: Binding(
-                            get: { store.soundEnabled },
-                            set: { _ in store.toggleSound() }
-                        ))
-                        .font(.system(size: 12, weight: .bold))
+                        // Master Intensity Slider (0% .. 100%)
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Ένταση Animations & Γραφικών")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(store.activePalette.textPrimary)
+                                Spacer()
+                                Text("\(Int(store.maximizeConfig.intensityPct))%")
+                                    .font(.system(size: 13, weight: .black, design: .monospaced))
+                                    .foregroundStyle(store.activePalette.primaryAccent)
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { store.maximizeConfig.intensityPct },
+                                    set: { newVal in
+                                        store.maximizeConfig.intensityPct = newVal
+                                        store.visualMode = store.maximizeConfig.isEffectivelyMaximized ? .maximized : .minimal
+                                    }
+                                ),
+                                in: 0...100,
+                                step: 5
+                            )
+                        }
                         .padding(12)
                         .background(store.activePalette.surface1)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                        // 7 Individual Custom Switches
+                        VStack(spacing: 8) {
+                            Toggle("💧 Σταγόνες που πέφτουν & Κυματισμοί", isOn: $store.maximizeConfig.dropletsEnabled)
+                            Divider().overlay(store.activePalette.border)
+                            Toggle("🌊 Κύματα Πισίνας & Σημαδούρες #4", isOn: $store.maximizeConfig.wavesEnabled)
+                            Divider().overlay(store.activePalette.border)
+                            Toggle("🚩 Σημαιάκια & Φυσαλίδες", isOn: $store.maximizeConfig.flagsEnabled)
+                            Divider().overlay(store.activePalette.border)
+                            Toggle("🏊 Κίνηση Βατήρα #4 (Βύθιση & Επαναφορά)", isOn: $store.maximizeConfig.animatedStartingBlockEnabled)
+                            Divider().overlay(store.activePalette.border)
+                            Toggle("✨ Animated Εικονίδια & Λάμψη Καρτών", isOn: $store.maximizeConfig.animatedIconsAndCardsEnabled)
+                            Divider().overlay(store.activePalette.border)
+                            Toggle("🕹️ 3D Tactile Κουμπιά (Duolingo Push)", isOn: $store.maximizeConfig.tactile3DButtonsEnabled)
+                            Divider().overlay(store.activePalette.border)
+                            Toggle("🔊 Ηχητικά Εφέ & Haptics", isOn: Binding(
+                                get: { store.soundEnabled },
+                                set: { _ in store.toggleSound() }
+                            ))
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(store.activePalette.textPrimary)
+                        .padding(14)
+                        .l4neAnimatedBox(palette: store.activePalette, isMaximized: store.isMaximized, cornerRadius: 14)
                     }
 
                     // Multi-Theme Selector

@@ -63,57 +63,57 @@ public struct L4NEPalette: Sendable {
     public static func forPreset(_ preset: ThemePreset) -> L4NEPalette {
         switch preset {
         case .graphiteBevel:
-            // Default Minimalist Titanium Graphite + Bevel Specular Edges + L4NE Electric Lime
+            // 1. Aquatic Blue (Μπλε) — Round Blue-Graphite + Vibrant Athletic Blue (#3B82F6) & Cyan (#38BDF8)
             return L4NEPalette(
                 preset: .graphiteBevel,
                 isLightMode: false,
-                bgCanvas: Color(hex: "101216"),
-                surface1: Color(hex: "171A21"),
-                surface2: Color(hex: "1F242D"),
-                surface3: Color(hex: "282E3A"),
-                recessedDisc: Color(hex: "0C0E12"),
-                ringStefani: Color(hex: "232834"),
-                ringTrack: Color(hex: "262C38"),
-                border: Color.white.opacity(0.09),
-                borderStrong: Color.white.opacity(0.18),
-                highlightEdge: Color.white.opacity(0.16),
+                bgCanvas: Color(hex: "0B1324"),
+                surface1: Color(hex: "132038"),
+                surface2: Color(hex: "1B2D4D"),
+                surface3: Color(hex: "243B63"),
+                recessedDisc: Color(hex: "080E1C"),
+                ringStefani: Color(hex: "1D2F50"),
+                ringTrack: Color(hex: "22365C"),
+                border: Color.white.opacity(0.10),
+                borderStrong: Color.white.opacity(0.20),
+                highlightEdge: Color.white.opacity(0.18),
                 textPrimary: Color(hex: "F8FAFC"),
-                textSecondary: Color(hex: "94A3B8"),
-                textOnAccent: Color(hex: "090B0E"),
-                primaryAccent: Color(hex: "CCFF00"),
+                textSecondary: Color(hex: "93C5FD"),
+                textOnAccent: Color.white,
+                primaryAccent: Color(hex: "3B82F6"),
                 secondaryAccent: Color(hex: "38BDF8"),
                 prGold: Color(hex: "FACC15"),
-                signalGreen: Color(hex: "34D399"),
+                signalGreen: Color(hex: "38BDF8"),
                 warningAmber: Color(hex: "F59E0B"),
                 regressionRed: Color(hex: "F87171")
             )
-        case .stravaObsidian:
-            // Strava-inspired Obsidian Graphite + Signal Orange (#FC4C02) + Gold PR Badges
+        case .lane4Carbon:
+            // 2. Midnight Deep Blue (Πιο Σκούρο Μπλε) — Abyssal Midnight (#050914) + Deep Cobalt (#2563EB)
             return L4NEPalette(
-                preset: .stravaObsidian,
+                preset: .lane4Carbon,
                 isLightMode: false,
-                bgCanvas: Color(hex: "0D0F12"),
-                surface1: Color(hex: "15181E"),
-                surface2: Color(hex: "1D212A"),
-                surface3: Color(hex: "262B36"),
-                recessedDisc: Color(hex: "0A0B0E"),
-                ringStefani: Color(hex: "222731"),
-                ringTrack: Color(hex: "282D38"),
-                border: Color.white.opacity(0.09),
-                borderStrong: Color.white.opacity(0.18),
-                highlightEdge: Color.white.opacity(0.15),
+                bgCanvas: Color(hex: "050914"),
+                surface1: Color(hex: "0B1224"),
+                surface2: Color(hex: "111C36"),
+                surface3: Color(hex: "19284A"),
+                recessedDisc: Color(hex: "040710"),
+                ringStefani: Color(hex: "14203D"),
+                ringTrack: Color(hex: "1A294D"),
+                border: Color.white.opacity(0.10),
+                borderStrong: Color.white.opacity(0.20),
+                highlightEdge: Color.white.opacity(0.18),
                 textPrimary: Color(hex: "F8FAFC"),
-                textSecondary: Color(hex: "9CA3AF"),
+                textSecondary: Color(hex: "94A3B8"),
                 textOnAccent: Color.white,
-                primaryAccent: Color(hex: "FC4C02"),
-                secondaryAccent: Color(hex: "F97316"),
+                primaryAccent: Color(hex: "2563EB"),
+                secondaryAccent: Color(hex: "60A5FA"),
                 prGold: Color(hex: "FACC15"),
-                signalGreen: Color(hex: "10B981"),
+                signalGreen: Color(hex: "60A5FA"),
                 warningAmber: Color(hex: "F59E0B"),
                 regressionRed: Color(hex: "EF4444")
             )
         case .bevelNavy:
-            // LoggedInWatch Graphite Navy Palette (#0F172A / #16213A / #38BDF8 / #EAB308)
+            // 3. Poolside Navy (#0F172A / #16213A / #38BDF8 / #EAB308)
             return L4NEPalette(
                 preset: .bevelNavy,
                 isLightMode: false,
@@ -133,57 +133,57 @@ public struct L4NEPalette: Sendable {
                 primaryAccent: Color(hex: "38BDF8"),
                 secondaryAccent: Color(hex: "EAB308"),
                 prGold: Color(hex: "EAB308"),
-                signalGreen: Color(hex: "7FC791"),
+                signalGreen: Color(hex: "38BDF8"),
                 warningAmber: Color(hex: "EA9F41"),
                 regressionRed: Color(hex: "FA8A8A")
             )
-        case .lane4Carbon:
-            // Pure OLED Carbon Black + High-Voltage Lime
+        case .stravaObsidian:
+            // 4. Athletic Red / Crimson (#0D0F12 + #EF4444 / #FC4C02)
             return L4NEPalette(
-                preset: .lane4Carbon,
+                preset: .stravaObsidian,
                 isLightMode: false,
-                bgCanvas: Color(hex: "060709"),
-                surface1: Color(hex: "0F1217"),
-                surface2: Color(hex: "171C24"),
-                surface3: Color(hex: "202631"),
-                recessedDisc: Color(hex: "050608"),
-                ringStefani: Color(hex: "191E26"),
-                ringTrack: Color(hex: "202733"),
-                border: Color.white.opacity(0.10),
-                borderStrong: Color.white.opacity(0.20),
-                highlightEdge: Color.white.opacity(0.18),
-                textPrimary: Color(hex: "FFFFFF"),
-                textSecondary: Color(hex: "94A3B8"),
-                textOnAccent: Color.black,
-                primaryAccent: Color(hex: "D4FF00"),
-                secondaryAccent: Color(hex: "00F0FF"),
-                prGold: Color(hex: "FDE047"),
-                signalGreen: Color(hex: "22C55E"),
+                bgCanvas: Color(hex: "0D0F12"),
+                surface1: Color(hex: "15181E"),
+                surface2: Color(hex: "1D212A"),
+                surface3: Color(hex: "262B36"),
+                recessedDisc: Color(hex: "0A0B0E"),
+                ringStefani: Color(hex: "222731"),
+                ringTrack: Color(hex: "282D38"),
+                border: Color.white.opacity(0.09),
+                borderStrong: Color.white.opacity(0.18),
+                highlightEdge: Color.white.opacity(0.15),
+                textPrimary: Color(hex: "F8FAFC"),
+                textSecondary: Color(hex: "9CA3AF"),
+                textOnAccent: Color.white,
+                primaryAccent: Color(hex: "EF4444"),
+                secondaryAccent: Color(hex: "F97316"),
+                prGold: Color(hex: "FACC15"),
+                signalGreen: Color(hex: "38BDF8"),
                 warningAmber: Color(hex: "F59E0B"),
                 regressionRed: Color(hex: "EF4444")
             )
         case .minimalAlabaster:
-            // Minimalist Daylight Lab (Bevel Light Alabaster + Deep Graphite Typography)
+            // 5. Daylight Blue (Light Alabaster + Deep Royal Blue Accent)
             return L4NEPalette(
                 preset: .minimalAlabaster,
                 isLightMode: true,
-                bgCanvas: Color(hex: "F3F4F6"),
+                bgCanvas: Color(hex: "F1F5F9"),
                 surface1: Color(hex: "FFFFFF"),
-                surface2: Color(hex: "E5E7EB"),
-                surface3: Color(hex: "D1D5DB"),
-                recessedDisc: Color(hex: "EEF0F4"),
-                ringStefani: Color(hex: "D1D5DB"),
+                surface2: Color(hex: "E2E8F0"),
+                surface3: Color(hex: "CBD5E1"),
+                recessedDisc: Color(hex: "E2E8F0"),
+                ringStefani: Color(hex: "CBD5E1"),
                 ringTrack: Color(hex: "E2E8F0"),
                 border: Color.black.opacity(0.08),
                 borderStrong: Color.black.opacity(0.15),
                 highlightEdge: Color.white.opacity(0.90),
-                textPrimary: Color(hex: "111827"),
-                textSecondary: Color(hex: "4B5563"),
+                textPrimary: Color(hex: "0F172A"),
+                textSecondary: Color(hex: "475569"),
                 textOnAccent: Color.white,
-                primaryAccent: Color(hex: "111827"),
-                secondaryAccent: Color(hex: "FC4C02"),
+                primaryAccent: Color(hex: "2563EB"),
+                secondaryAccent: Color(hex: "0284C7"),
                 prGold: Color(hex: "D97706"),
-                signalGreen: Color(hex: "059669"),
+                signalGreen: Color(hex: "0284C7"),
                 warningAmber: Color(hex: "D97706"),
                 regressionRed: Color(hex: "DC2626")
             )
@@ -706,11 +706,19 @@ public struct L4NEStartingBlockIcon: View {
                 style: StrokeStyle(lineWidth: w * 0.040, lineCap: .round)
             )
 
-            // 9. Cutout Digit '4' in the center of the Starting Block Pedestal
-            let fourText = Text("4")
-                .font(.system(size: w * 0.27, weight: .black, design: .rounded))
-                .foregroundColor(cutoutColor)
-            context.draw(fourText, at: p(49, 66), anchor: .center)
+            // 9. High-Contrast Carved Cutout Digit '4' inside the Starting Block Pedestal (always visible across all themes!)
+            var fourPath = Path()
+            // Vertical & diagonal stroke of '4'
+            fourPath.move(to: p(52, 53))
+            fourPath.addLine(to: p(39, 69))
+            fourPath.addLine(to: p(57, 69))
+            fourPath.move(to: p(52, 53))
+            fourPath.addLine(to: p(52, 77))
+            context.stroke(
+                fourPath,
+                with: .color(cutoutColor),
+                style: StrokeStyle(lineWidth: w * 0.068, lineCap: .round, lineJoin: .round)
+            )
         }
         .frame(width: size, height: size)
     }

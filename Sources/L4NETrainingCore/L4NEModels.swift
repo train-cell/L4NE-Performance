@@ -185,21 +185,21 @@ public enum ThemePreset: String, Codable, CaseIterable, Identifiable, Sendable {
 
     public var displayTitle: String {
         switch self {
-        case .graphiteBevel: return "L4NE Dark"
-        case .stravaObsidian: return "Athletic Orange"
+        case .graphiteBevel: return "Aquatic Blue"
+        case .lane4Carbon: return "Midnight Deep Blue"
         case .bevelNavy: return "Poolside Navy"
-        case .lane4Carbon: return "OLED Black"
-        case .minimalAlabaster: return "Daylight Clean"
+        case .stravaObsidian: return "Athletic Red"
+        case .minimalAlabaster: return "Daylight Blue"
         }
     }
 
     public var subtitle: String {
         switch self {
-        case .graphiteBevel: return "Σκούρο ανθρακί με Electric Lime"
-        case .stravaObsidian: return "Σκούρο ανθρακί με αγωνιστικό πορτοκαλί"
-        case .bevelNavy: return "Βαθύ μπλε πισίνας με Cyan"
-        case .lane4Carbon: return "Απόλυτο μαύρο υψηλής αντίθεσης"
-        case .minimalAlabaster: return "Φωτεινό θέμα ημέρας"
+        case .graphiteBevel: return "Αγωνιστικό Μπλε με Cyan & Round Graphite κάρτες"
+        case .lane4Carbon: return "Βαθύ Σκούρο Μπλε (Midnight Cobalt) υψηλής αντίθεσης"
+        case .bevelNavy: return "Κλασικό Navy Πισίνας με Electric Sky & Gold"
+        case .stravaObsidian: return "Ανθρακί με Αγωνιστικό Κόκκινο"
+        case .minimalAlabaster: return "Φωτεινό θέμα ημέρας με Royal Blue"
         }
     }
 }

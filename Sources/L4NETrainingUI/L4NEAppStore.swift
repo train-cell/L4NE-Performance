@@ -14,29 +14,40 @@ public final class L4NEAppStore: ObservableObject {
     @Published public var appSettings: AppSettings = AppSettings()
     @Published public var activePalette: L4NEPalette = .forPreset(.graphiteBevel)
     @Published public var visualMode: L4NEVisualMode = .maximized
+    @Published public var maximizeConfig: L4NEMaximizeConfig = .balancedPreset
     @Published public var soundEnabled: Bool = true
     @Published public var templates: [TemplateWithVersion] = []
 
     public var isMaximized: Bool {
-        visualMode == .maximized
+        maximizeConfig.isEffectivelyMaximized
     }
 
     public func toggleVisualMode() {
-        visualMode = (visualMode == .maximized) ? .minimal : .maximized
-        L4NESoundHapticsEngine.shared.trigger(.waveSweep)
-        lastStatusBanner = visualMode == .maximized
-            ? "Ενεργοποιήθηκε το Maximized Mode (Σταγόνες · Κύματα · Σημαιάκια · Βατήρας · Ήχοι)."
-            : "Ενεργοποιήθηκε το Minimal Round Graphite Mode."
+        if maximizeConfig.isEffectivelyMaximized {
+            applyMaximizeConfig(.minimalPreset)
+        } else {
+            applyMaximizeConfig(.balancedPreset)
+        }
     }
 
     public func setVisualMode(_ mode: L4NEVisualMode) {
-        guard visualMode != mode else { return }
-        visualMode = mode
-        L4NESoundHapticsEngine.shared.trigger(.waveSweep)
+        applyMaximizeConfig(mode == .maximized ? .balancedPreset : .minimalPreset)
+    }
+
+    public func applyMaximizeConfig(_ config: L4NEMaximizeConfig) {
+        maximizeConfig = config
+        visualMode = config.isEffectivelyMaximized ? .maximized : .minimal
+        soundEnabled = config.soundAndHapticsEnabled
+        L4NESoundHapticsEngine.shared.soundEnabled = config.soundAndHapticsEnabled
+        L4NESoundHapticsEngine.shared.hapticsEnabled = config.soundAndHapticsEnabled
+        if config.soundAndHapticsEnabled {
+            L4NESoundHapticsEngine.shared.trigger(.waveSweep)
+        }
     }
 
     public func toggleSound() {
         soundEnabled.toggle()
+        maximizeConfig.soundAndHapticsEnabled = soundEnabled
         L4NESoundHapticsEngine.shared.soundEnabled = soundEnabled
         if soundEnabled {
             L4NESoundHapticsEngine.shared.trigger(.dropletTap)
